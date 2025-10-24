@@ -159,6 +159,11 @@
                 }
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#transaction-history" type="button">
+                <i class="bi bi-clock-history me-1"></i>Transaction History
+            </button>
+        </li>
     </ul>
 
     <!-- Tab Content -->
@@ -454,15 +459,15 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var customer in (List<CustomerDTO>)ViewBag.Customers)
+                                  @foreach (var customer in (List<CustomerDTO>)ViewBag.Customers)
                                     {
-                                        <tr>
-                                            <td><strong>@customer.Custid</strong></td>
-                                            <td>@customer.Custname</td>
-                                            <td>@customer.Pan</td>
-                                            <td>@customer.PhoneNumber</td>
-                                            <td>@(customer.DOB?.ToString("dd/MM/yyyy") ?? "N/A")</td>
-                                        </tr>
+                                      <tr>
+                                        <td><strong>@customer.Custid</strong></td>
+                                        <td>@customer.Custname</td>
+                                        <td>@customer.Pan</td>
+                                        <td>@customer.PhoneNumber</td>
+                                        <td>@(customer.DOB?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                                      </tr>
                                     }
                                 </tbody>
                             </table>
@@ -727,9 +732,9 @@
                                             </td>
                                             <td>@app.InterestRate% p.a.</td>
                                             <td>
-                                                <strong>@app.OpenedBy</strong><br>
-                                                <small class="text-muted">@app.OpenedByRole</small>
-                                            </td>
+                                                 <strong>@app.OpenedBy</strong><br>
+             <small class="text-muted">@app.OpenedByRole</small>
+        </td>
                                             <td>@app.OpenDate.ToString("dd/MM/yyyy")</td>
                                             <td>
                                                 <!-- Approve Button -->
@@ -763,6 +768,61 @@
                 </div>
             </div>
         </div>
+
+        <!-- Transaction History Tab -->
+        <div class="tab-pane fade" id="transaction-history">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+         <h5 class="mb-0">
+      <i class="bi bi-clock-history me-2"></i>Transaction History
+   </h5>
+                </div>
+    <div class="card-body">
+            <div class="alert alert-info">
+             <i class="bi bi-info-circle me-2"></i>
+  <strong>View all system transactions:</strong> Search by account ID to view specific account transaction history.
+  </div>
+
+     <div class="mb-3">
+        <label class="form-label">Search by Savings Account ID</label>
+              <div class="input-group">
+    <input type="text" id="searchAccountId" class="form-control" placeholder="e.g., SB00001" style="text-transform: uppercase;">
+         <button class="btn btn-primary" type="button" onclick="searchTransactionHistory()">
+              <i class="bi bi-search me-1"></i>Search
+              </button>
+          </div>
+                <small class="text-muted">Leave empty to load all transactions (may be large)</small>
+   </div>
+
+     <div id="transHistoryLoading" class="text-center py-5" style="display:none;">
+                <div class="spinner-border text-primary"></div>
+      <p class="text-muted mt-2">Loading transactions...</p>
+            </div>
+
+            <div id="transHistoryError" class="alert alert-danger" style="display:none;"></div>
+
+     <div id="transHistoryContent" class="table-responsive" style="display:none;">
+         <table class="table table-striped table-hover">
+ <thead class="table-info">
+       <tr>
+     <th>Account ID</th>
+           <th>Type</th>
+           <th>Amount</th>
+   <th>Date & Time</th>
+    </tr>
+     </thead>
+  <tbody id="transHistoryTable">
+             </tbody>
+    </table>
+            </div>
+
+       <div id="transHistoryEmpty" class="alert alert-info" style="display:none;">
+                <i class="bi bi-info-circle me-2"></i>
+ No transactions found. Try searching with a valid account ID.
+            </div>
+ </div>
+    </div>
+</div>
     </div>
 </div>
 
@@ -1043,12 +1103,90 @@
         // Show reject modal with application details
         function showRejectModal(accountId, accountType) {
             document.getElementById('rejectAccountId').value = accountId;
-            document.getElementById('rejectAccountIdDisplay').textContent = accountId;
-            document.getElementById('rejectAccountType').textContent = accountType;
+document.getElementById('rejectAccountIdDisplay').textContent = accountId;
+   document.getElementById('rejectAccountType').textContent = accountType;
             document.getElementById('rejectionReason').value = '';
             
-            var modal = new bootstrap.Modal(document.getElementById('rejectModal'));
-            modal.show();
+        var modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+        }
+
+        // Search transaction history
+        function searchTransactionHistory() {
+       var accountId = document.getElementById('searchAccountId').value.toUpperCase();
+            
+        document.getElementById('transHistoryLoading').style.display = 'block';
+            document.getElementById('transHistoryError').style.display = 'none';
+        document.getElementById('transHistoryContent').style.display = 'none';
+        document.getElementById('transHistoryEmpty').style.display = 'none';
+       
+    var url = '@Url.Action("GetTransactionHistory", "Dashboard")';
+    if (accountId) {
+  url += '?accountId=' + accountId;
+            }
+         
+            fetch(url)
+           .then(response => response.json())
+       .then(data => {
+         document.getElementById('transHistoryLoading').style.display = 'none';
+          
+      if (data.success && data.data && data.data.length > 0) {
+         var html = '';
+   data.data.forEach(function(t) {
+     var dateValue = t.Transactiondate || t.Transationdate;
+           var date = new Date(dateValue);
+        
+  if (isNaN(date.getTime())) {
+         date = new Date();
+      }
+       
+   var formattedDate = date.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+       month: 'short', 
+   year: 'numeric' 
+      });
+           var formattedTime = date.toLocaleTimeString('en-GB', { 
+  hour: '2-digit', 
+          minute: '2-digit',
+     hour12: true
+        });
+       
+            var transType = t.Transactiontype.toUpperCase();
+        var displayType = t.Transactiontype;
+ 
+      if (transType === 'TRANSFER_DEBIT') {
+      displayType = 'Transfer Out';
+      } else if (transType === 'TRANSFER_CREDIT') {
+      displayType = 'Transfer In';
+       } else if (transType === 'LOAN_PAYMENT') {
+ displayType = 'Loan Payment';
+      } else if (transType === 'INITIAL DEPOSIT') {
+          displayType = 'Initial Deposit';
+     }
+          
+     var isCredit = transType.includes('DEPOSIT') || transType.includes('CREDIT');
+         var amountClass = isCredit ? 'text-success' : 'text-danger';
+       var sign = isCredit ? '+' : '-';
+   
+         html += `<tr>
+      <td><strong>${t.SBAccountID}</strong></td>
+     <td>${displayType}</td>
+    <td class="${amountClass} fw-bold">${sign}₹ ${parseFloat(t.Amount).toFixed(2)}</td>
+      <td>${formattedDate} ${formattedTime}</td>
+         </tr>`;
+        });
+   document.getElementById('transHistoryTable').innerHTML = html;
+         document.getElementById('transHistoryContent').style.display = 'block';
+    } else {
+                 document.getElementById('transHistoryEmpty').style.display = 'block';
+              }
+                })
+             .catch(error => {
+        document.getElementById('transHistoryLoading').style.display = 'none';
+       document.getElementById('transHistoryError').textContent = 'Error: ' + error.message;
+ document.getElementById('transHistoryError').style.display = 'block';
+              console.error('Fetch error:', error);
+              });
         }
     </script>
 }

@@ -43,7 +43,8 @@ namespace BankApp.Services
                     OpenedByRole = account.OpenedByRole,
                     OpenDate = account.OpenDate,
                     Status = account.Status,
-                    ClosedDate = account.ClosedDate
+                    ClosedDate = account.ClosedDate,
+                    RejectionReason = account.RejectionReason  // Add rejection reason
                 });
             }
 
@@ -77,7 +78,8 @@ namespace BankApp.Services
                     OpenedByRole = account.OpenedByRole,
                     OpenDate = account.OpenDate,
                     Status = account.Status,
-                    ClosedDate = account.ClosedDate
+                    ClosedDate = account.ClosedDate,
+                    RejectionReason = account.RejectionReason  // Add rejection reason
                 });
             }
 
@@ -104,7 +106,8 @@ namespace BankApp.Services
                 OpenedByRole = account.OpenedByRole,
                 OpenDate = account.OpenDate,
                 Status = account.Status,
-                ClosedDate = account.ClosedDate
+                ClosedDate = account.ClosedDate,
+                RejectionReason = account.RejectionReason  // Add rejection reason
             };
         }
 
@@ -363,6 +366,7 @@ namespace BankApp.Services
         public DateTime OpenDate { get; set; }
         public string Status { get; set; }
         public DateTime? ClosedDate { get; set; }
+        public string RejectionReason { get; set; }  // NEW: Add rejection reason property
     }
 
     /// <summary>
@@ -411,25 +415,43 @@ namespace BankApp.Services
     {
         public string AccountID { get; set; }
         public string AccountType { get; set; }
-        public string CustomerID { get; set; }
+      public string CustomerID { get; set; }
         public string CustomerName { get; set; }
         public string OpenedBy { get; set; }
-        public string OpenedByRole { get; set; }
-        public DateTime OpenDate { get; set; }
+     public string OpenedByRole { get; set; }
+     public DateTime OpenDate { get; set; }
         public string Status { get; set; }
         
         // FD specific
-        public decimal Amount { get; set; }
+   public decimal Amount { get; set; }
         public decimal MaturityAmount { get; set; }
-        
+ 
         // Loan specific
         public decimal LoanAmount { get; set; }
-        public decimal EMI { get; set; }
+   public decimal EMI { get; set; }
         
         // Common
-        public decimal InterestRate { get; set; }
+      public decimal InterestRate { get; set; }
         public int Tenure { get; set; }
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
+  public DateTime? StartDate { get; set; }
+      public DateTime? EndDate { get; set; }
+        
+        /// <summary>
+        /// Get the label for "By" column - shows role + ID
+        /// Examples: "Manager (MGR001)", "Employee (EMP001)"
+        /// </summary>
+        public string RequestedByDisplay
+        {
+         get
+            {
+ if (string.IsNullOrEmpty(OpenedByRole))
+  return OpenedBy;
+              
+      // Format: "MANAGER (ID)" or "EMPLOYEE (ID)" or capitalize first letter
+    string roleLabel = System.Globalization.CultureInfo.CurrentCulture.TextInfo
+     .ToTitleCase(OpenedByRole.ToLower());
+ return $"{roleLabel} ({OpenedBy})";
+        }
+        }
     }
 }

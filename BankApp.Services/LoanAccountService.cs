@@ -217,124 +217,301 @@ namespace BankApp.Services
         }
 
         /// <summary>
-        /// Pay loan EMI from customer's savings account
-        /// Payment types: EMI (regular), PART_PAYMENT, FULL_CLOSURE
+        /// Get current outstanding balance for a loan
         /// </summary>
-        public AccountOperationResult PayEMI(string loanAccountId, string customerId, decimal paymentAmount, string paymentType = "EMI")
+        public decimal GetOutstandingBalance(string lnAccountId)
         {
             try
             {
-                // Get loan account
-                var loanAccount = _loanRepo.GetLoanAccountById(loanAccountId);
+                var loanAccount = _loanRepo.GetLoanAccountById(lnAccountId);
                 if (loanAccount == null)
                 {
-                    return Error("Loan account not found");
+                    return 0;
                 }
 
-                // Verify ownership
-                if (loanAccount.Customer != customerId)
-                {
-                    return Error("This loan account does not belong to you");
-                }
-
-                // Get savings account for payment
-                var savingsRepo = new SavingsAccountRepository();
-                var savingsAccount = savingsRepo.GetSavingsAccountByCustomerId(customerId);
-                if (savingsAccount == null)
-                {
-                    return Error("You don't have a savings account to make payment from");
-                }
-
-                // Check sufficient balance (payment amount + Rs. 1,000 minimum balance)
-                decimal currentBalance = savingsAccount.Balance ?? 0;
-                if (currentBalance - paymentAmount < 1000)
-                {
-                    return Error($"Insufficient balance. You must maintain Rs. 1,000 minimum balance in savings account. Available: Rs. {(currentBalance - 1000 > 0 ? currentBalance - 1000 : 0):N2}");
-                }
-
-                // Get latest outstanding balance
+                // Get latest transaction to find current outstanding
                 var loanTransactionRepo = new LoanTransactionRepository();
-                var lastTransaction = loanTransactionRepo.GetLatestTransaction(loanAccountId);
-                decimal outstanding = lastTransaction?.Outstanding ?? (loanAccount.loan_amount ?? 0);
-
-                // Validate payment amount
-                decimal emi = loanAccount.Emi ?? 0;
+                var lastTransaction = loanTransactionRepo.GetLatestTransaction(lnAccountId);
                 
-                if (paymentType == "EMI" && paymentAmount < emi)
-                {
-                    return Error($"Regular EMI payment must be at least Rs. {emi:N2}");
-                }
-
-                if (paymentAmount > outstanding)
-                {
-                    return Error($"Payment amount (Rs. {paymentAmount:N2}) exceeds outstanding loan balance (Rs. {outstanding:N2})");
-                }
-
-                // Calculate new outstanding
-                decimal newOutstanding = outstanding - paymentAmount;
-
-                // Execute payment (simple transaction handling)
-                try
-                {
-                    // Deduct from savings account
-                    decimal newSavingsBalance = currentBalance - paymentAmount;
-                    bool savingsUpdated = savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
-                    if (!savingsUpdated)
-                    {
-                        return Error("Failed to deduct payment from savings account");
-                    }
-
-                    // Record loan payment
-                    bool paymentRecorded = loanTransactionRepo.CreateLoanTransaction(
-                        loanAccountId,
-                        paymentAmount,
-                        newOutstanding,
-                        paymentType,
-                        customerId
-                    );
-
-                    if (!paymentRecorded)
-                    {
-                        // Rollback savings
-                        savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
-                        return Error("Failed to record loan payment");
-                    }
-
-                    // Record savings transaction
-                    var savingsTransactionRepo = new SavingsTransactionRepository();
-                    savingsTransactionRepo.CreateTransaction(savingsAccount.SBAccountID, "LOAN_PAYMENT", paymentAmount);
-
-                    // If fully paid, close the loan account
-                    if (newOutstanding == 0)
-                    {
-                        var accountRepo = new AccountRepository();
-                        accountRepo.CloseAccount(loanAccountId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Attempt rollback
-                    savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
-                    throw new Exception($"Payment failed: {ex.Message}", ex);
-                }
-
-                string message;
-                if (newOutstanding == 0)
-                {
-                    message = $"Congratulations! Loan fully paid. Amount: Rs. {paymentAmount:N2}. Loan account closed.";
-                }
-                else
-                {
-                    message = $"Payment successful! Amount: Rs. {paymentAmount:N2}. Remaining balance: Rs. {newOutstanding:N2}";
-                }
-
-                return Success(message, loanAccountId, newOutstanding);
+                // If no payments yet, outstanding = loan amount
+                decimal outstanding = lastTransaction?.Outstanding ?? (loanAccount.loan_amount ?? 0);
+                return outstanding;
             }
-            catch (Exception ex)
+            catch
             {
-                return Error($"Payment failed: {ex.Message}");
+                return 0;
             }
         }
+
+        /// <summary>
+        /// Pay loan EMI from customer's savings account or FD account
+        /// Payment types: EMI (regular), PART_PAYMENT, FULL_CLOSURE
+        /// Payment methods: SAVINGS_ACCOUNT (default), FD_ACCOUNT
+        /// </summary>
+        public AccountOperationResult PayEMI(string loanAccountId, string customerId, decimal paymentAmount, string paymentType = "EMI", string paymentMethod = "SAVINGS_ACCOUNT")
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== PayEMI Called ===");
+System.Diagnostics.Debug.WriteLine($"Loan Account: {loanAccountId}");
+      System.Diagnostics.Debug.WriteLine($"Customer: {customerId}");
+ System.Diagnostics.Debug.WriteLine($"Amount: {paymentAmount}");
+System.Diagnostics.Debug.WriteLine($"Payment Type: {paymentType}");
+   System.Diagnostics.Debug.WriteLine($"Payment Method: {paymentMethod}");
+
+      // Get loan account
+          var loanAccount = _loanRepo.GetLoanAccountById(loanAccountId);
+           if (loanAccount == null)
+{
+       return Error("Loan account not found");
+             }
+
+         // Verify ownership
+      if (loanAccount.Customer != customerId)
+      {
+              return Error("This loan account does not belong to you");
+     }
+
+                // Get latest outstanding balance
+          var loanTransactionRepo = new LoanTransactionRepository();
+ var lastTransaction = loanTransactionRepo.GetLatestTransaction(loanAccountId);
+      decimal outstanding = lastTransaction?.Outstanding ?? (loanAccount.loan_amount ?? 0);
+
+         // Validate payment amount
+      decimal emi = loanAccount.Emi ?? 0;
+       
+  if (paymentType == "EMI" && paymentAmount < emi)
+     {
+   return Error($"Regular EMI payment must be at least Rs. {emi:N2}");
+  }
+
+     if (paymentAmount > outstanding)
+       {
+     return Error($"Payment amount (Rs. {paymentAmount:N2}) exceeds outstanding loan balance (Rs. {outstanding:N2})");
+           }
+
+          // Calculate new outstanding
+                decimal newOutstanding = outstanding - paymentAmount;
+
+     // Handle payment based on method
+            if (paymentMethod == "FD_ACCOUNT")
+        {
+      return PayFromFD(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
+  }
+  else // SAVINGS_ACCOUNT (default)
+     {
+    return PayFromSavings(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
+      }
+            }
+         catch (Exception ex)
+        {
+   return Error($"Payment failed: {ex.Message}");
+ }
+      }
+
+     /// <summary>
+    /// Pay EMI from Savings Account
+      /// </summary>
+      private AccountOperationResult PayFromSavings(string customerId, string loanAccountId, decimal paymentAmount, decimal newOutstanding, string paymentType)
+   {
+   var savingsRepo = new SavingsAccountRepository();
+      var savingsAccount = savingsRepo.GetSavingsAccountByCustomerId(customerId);
+            if (savingsAccount == null)
+     {
+   return Error("You don't have a savings account to make payment from");
+    }
+
+      // Check sufficient balance (payment amount + Rs. 1,000 minimum balance)
+    decimal currentBalance = savingsAccount.Balance ?? 0;
+            if (currentBalance - paymentAmount < 1000)
+  {
+           return Error($"Insufficient balance. You must maintain Rs. 1,000 minimum balance in savings account. Available: Rs. {(currentBalance - 1000 > 0 ? currentBalance - 1000 : 0):N2}");
+            }
+
+            try
+    {
+ // Deduct from savings account
+     decimal newSavingsBalance = currentBalance - paymentAmount;
+    bool savingsUpdated = savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
+       if (!savingsUpdated)
+    {
+   return Error("Failed to deduct payment from savings account");
+                }
+
+ // Record loan payment
+       var loanTransactionRepo = new LoanTransactionRepository();
+        bool paymentRecorded = loanTransactionRepo.CreateLoanTransaction(
+       loanAccountId,
+                    paymentAmount,
+         newOutstanding,
+  paymentType,
+      customerId
+    );
+
+   if (!paymentRecorded)
+     {
+     // Rollback savings
+ savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
+      return Error("Failed to record loan payment");
+                }
+
+     // Record savings transaction
+    var savingsTransactionRepo = new SavingsTransactionRepository();
+  savingsTransactionRepo.CreateTransaction(savingsAccount.SBAccountID, "LOAN_PAYMENT", paymentAmount);
+
+      // If fully paid, close the loan account
+            if (newOutstanding == 0)
+      {
+   _accountRepo.CloseAccount(loanAccountId);
+    }
+
+        string message;
+       if (newOutstanding == 0)
+              {
+        message = $"Congratulations! Loan fully paid from Savings Account. Amount: Rs. {paymentAmount:N2}. Loan account closed.";
+    }
+   else
+     {
+    message = $"Payment successful from Savings Account! Amount: Rs. {paymentAmount:N2}. Remaining balance: Rs. {newOutstanding:N2}";
+         }
+
+     return Success(message, loanAccountId, newOutstanding);
+   }
+      catch (Exception ex)
+  {
+         // Attempt rollback
+     savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
+                throw new Exception($"Payment failed: {ex.Message}", ex);
+       }
+   }
+
+        /// <summary>
+ /// Pay EMI from Fixed Deposit Account (Foreclose FD and use maturity amount)
+  /// </summary>
+        private AccountOperationResult PayFromFD(string customerId, string loanAccountId, decimal paymentAmount, decimal newOutstanding, string paymentType)
+ {
+   System.Diagnostics.Debug.WriteLine("=== PayFromFD Called ===");
+            
+       var fdRepo = new FixedDepositAccountRepository();
+      var savingsRepo = new SavingsAccountRepository();
+       
+// Get all customer's active FD accounts
+   var fdAccounts = fdRepo.GetFDAccountsByCustomerId(customerId);
+     var activeFDs = fdAccounts.Where(fd => 
+    {
+             var account = _accountRepo.GetAccountById(fd.FDAccountID);
+     return account != null && account.Status == "OPEN";
+ }).ToList();
+
+            System.Diagnostics.Debug.WriteLine($"Found {activeFDs.Count} active FD account(s)");
+
+ if (!activeFDs.Any())
+    {
+        return Error("You don't have any active Fixed Deposit accounts to make payment from");
+ }
+
+          // Find FD with sufficient maturity amount
+         var suitableFD = activeFDs.FirstOrDefault(fd => (fd.MaturityAmount ?? 0) >= paymentAmount);
+    
+            if (suitableFD == null)
+   {
+    var maxFD = activeFDs.OrderByDescending(fd => fd.MaturityAmount ?? 0).First();
+       return Error($"No Fixed Deposit has enough maturity amount. Highest FD maturity: Rs. {(maxFD.MaturityAmount ?? 0):N2}, Required: Rs. {paymentAmount:N2}");
+}
+
+            System.Diagnostics.Debug.WriteLine($"Selected FD: {suitableFD.FDAccountID}, Maturity: {suitableFD.MaturityAmount}");
+
+   // Get customer's savings account (for receiving excess amount)
+   var savingsAccount = savingsRepo.GetSavingsAccountByCustomerId(customerId);
+   if (savingsAccount == null)
+     {
+   return Error("You need a savings account to receive the excess FD amount");
+            }
+
+            decimal fdMaturityAmount = suitableFD.MaturityAmount ?? 0;
+  decimal excessAmount = fdMaturityAmount - paymentAmount;
+
+      System.Diagnostics.Debug.WriteLine($"FD Maturity: {fdMaturityAmount}, Payment: {paymentAmount}, Excess: {excessAmount}");
+
+   try
+  {
+      // Record loan payment
+       var loanTransactionRepo = new LoanTransactionRepository();
+       bool paymentRecorded = loanTransactionRepo.CreateLoanTransaction(
+        loanAccountId,
+    paymentAmount,
+      newOutstanding,
+        $"{paymentType}_FROM_FD",
+       customerId
+     );
+
+   if (!paymentRecorded)
+  {
+          return Error("Failed to record loan payment");
+   }
+
+      System.Diagnostics.Debug.WriteLine("? Loan payment recorded");
+
+     // Transfer excess to savings
+             if (excessAmount > 0)
+ {
+    decimal currentSavingsBalance = savingsAccount.Balance ?? 0;
+      decimal newSavingsBalance = currentSavingsBalance + excessAmount;
+         
+  bool savingsUpdated = savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
+   if (!savingsUpdated)
+        {
+   return Error("Failed to transfer excess amount to savings account");
+               }
+
+       // Record savings transaction for excess
+      var savingsTransactionRepo = new SavingsTransactionRepository();
+     savingsTransactionRepo.CreateTransaction(savingsAccount.SBAccountID, "FD_MATURITY", excessAmount);
+           
+   System.Diagnostics.Debug.WriteLine($"? Excess {excessAmount} transferred to savings");
+    }
+
+         // Close FD account
+    bool fdClosed = _accountRepo.CloseAccount(suitableFD.FDAccountID);
+     if (!fdClosed)
+ {
+            return Error("Failed to close Fixed Deposit account");
+ }
+
+        System.Diagnostics.Debug.WriteLine($"? FD {suitableFD.FDAccountID} closed");
+
+        // If loan fully paid, close loan account
+   if (newOutstanding == 0)
+  {
+       _accountRepo.CloseAccount(loanAccountId);
+    System.Diagnostics.Debug.WriteLine($"? Loan {loanAccountId} closed (fully paid)");
+    }
+
+   string message;
+      if (newOutstanding == 0)
+        {
+               message = $"Congratulations! Loan fully paid using FD {suitableFD.FDAccountID}. ";
+  }
+         else
+    {
+message = $"Payment successful from FD {suitableFD.FDAccountID}! Remaining loan balance: Rs. {newOutstanding:N2}. ";
+          }
+
+    if (excessAmount > 0)
+          {
+         message += $"Excess amount Rs. {excessAmount:N2} transferred to your Savings Account.";
+       }
+
+      System.Diagnostics.Debug.WriteLine($"=== PayFromFD SUCCESS: {message} ===");
+
+ return Success(message, loanAccountId, newOutstanding);
+            }
+catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"? PayFromFD ERROR: {ex.Message}");
+  return Error($"Payment from FD failed: {ex.Message}");
+    }
+  }
 
         private AccountOperationResult Error(string message)
         {

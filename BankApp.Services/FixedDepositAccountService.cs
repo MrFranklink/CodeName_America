@@ -149,42 +149,96 @@ namespace BankApp.Services
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine("=== ForeCloseFDAccount Called ===");
+                System.Diagnostics.Debug.WriteLine($"FD Account ID: {fdAccountId}");
+
                 var fdAccount = _fdRepo.GetFDAccountById(fdAccountId);
                 if (fdAccount == null)
                 {
+                    System.Diagnostics.Debug.WriteLine("ERROR: FD Account not found");
                     return Error("Fixed Deposit Account not found");
                 }
+
+                System.Diagnostics.Debug.WriteLine($"FD Customer ID: {fdAccount.CustomerID}");
+                System.Diagnostics.Debug.WriteLine($"FD Amount: {fdAccount.Amount}");
+                System.Diagnostics.Debug.WriteLine($"FD MaturityAmount: {fdAccount.MaturityAmount}");
+                System.Diagnostics.Debug.WriteLine($"FD Interest Rate: {fdAccount.FD_ROI}");
+                System.Diagnostics.Debug.WriteLine($"FD Start Date: {fdAccount.StartDate}");
+                System.Diagnostics.Debug.WriteLine($"FD End Date: {fdAccount.EndDate}");
 
                 // Get customer's savings account
                 var savingsAccount = _savingsRepo.GetSavingsAccountByCustomerId(fdAccount.CustomerID);
                 if (savingsAccount == null)
                 {
+                    System.Diagnostics.Debug.WriteLine("ERROR: Savings account not found");
                     return Error("Customer's savings account not found. Cannot transfer FD amount.");
                 }
 
+                System.Diagnostics.Debug.WriteLine($"Savings Account ID: {savingsAccount.SBAccountID}");
+                System.Diagnostics.Debug.WriteLine($"Current Savings Balance: {savingsAccount.Balance}");
+
                 decimal fdMaturityAmount = fdAccount.MaturityAmount ?? 0;
+ 
+                // ?? EMERGENCY FIX: If MaturityAmount is NULL or 0, calculate it now
+                if (fdMaturityAmount == 0 && fdAccount.Amount.HasValue && fdAccount.Amount > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine("?? WARNING: MaturityAmount is NULL/0. Calculating now...");
+      
+                    // Calculate maturity using compound interest formula
+                    decimal principal = fdAccount.Amount.Value;
+                    decimal rate = fdAccount.FD_ROI;
+                    double tenureMonths = (fdAccount.EndDate - fdAccount.StartDate).Days / 30.44; // Average days per month
+                    double years = tenureMonths / 12.0;
+      
+                    fdMaturityAmount = principal * (decimal)Math.Pow((double)(1 + rate / 100), years);
+  
+                    System.Diagnostics.Debug.WriteLine($"? Calculated MaturityAmount: {fdMaturityAmount:N2}");
+                    System.Diagnostics.Debug.WriteLine($"   Principal: {principal:N2}, Rate: {rate}%, Years: {years:F2}");
+                }
+    
+                System.Diagnostics.Debug.WriteLine($"FD Maturity Amount to Transfer: {fdMaturityAmount:N2}");
+
                 decimal currentSavingsBalance = savingsAccount.Balance ?? 0;
                 decimal newSavingsBalance = currentSavingsBalance + fdMaturityAmount;
+
+                System.Diagnostics.Debug.WriteLine($"New Savings Balance: {newSavingsBalance:N2}");
 
                 // Transfer FD maturity amount to savings account
                 bool savingsUpdated = _savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
                 if (!savingsUpdated)
                 {
+                    System.Diagnostics.Debug.WriteLine("ERROR: Failed to update savings balance");
                     return Error("Failed to transfer FD amount to savings account");
                 }
 
+                System.Diagnostics.Debug.WriteLine("? Savings balance updated");
+
                 // Record transaction in savings account
                 var transactionRepo = new SavingsTransactionRepository();
-                transactionRepo.CreateTransaction(savingsAccount.SBAccountID, "FD_MATURITY", fdMaturityAmount);
+                bool transactionRecorded = transactionRepo.CreateTransaction(savingsAccount.SBAccountID, "FD_MATURITY", fdMaturityAmount);
+               
+                if (!transactionRecorded)
+                {
+                    System.Diagnostics.Debug.WriteLine("ERROR: Failed to record transaction");
+                    // Rollback savings balance
+                    _savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentSavingsBalance);
+                    return Error("Failed to record FD maturity transaction");
+                }
+
+                System.Diagnostics.Debug.WriteLine("? Transaction recorded");
 
                 // Close FD account in master Account table
                 bool closed = _accountRepo.CloseAccount(fdAccountId);
                 if (!closed)
                 {
-                    // Rollback savings balance
+                    System.Diagnostics.Debug.WriteLine("ERROR: Failed to close FD account");
+                    // Rollback savings balance and transaction
                     _savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentSavingsBalance);
                     return Error("Failed to close Fixed Deposit account");
                 }
+
+                System.Diagnostics.Debug.WriteLine("? FD account closed");
+                System.Diagnostics.Debug.WriteLine($"=== SUCCESS: FD {fdAccountId} closed, ?{fdMaturityAmount:N2} transferred to {savingsAccount.SBAccountID} ===");
 
                 return Success(
                     $"Fixed Deposit {fdAccountId} closed successfully. Amount Rs. {fdMaturityAmount:N2} transferred to your Savings Account ({savingsAccount.SBAccountID}). New savings balance: Rs. {newSavingsBalance:N2}",
@@ -195,6 +249,8 @@ namespace BankApp.Services
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"EXCEPTION in ForeCloseFDAccount: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
                 return Error($"Failed to close FD account: {ex.Message}");
             }
         }

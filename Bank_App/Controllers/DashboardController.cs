@@ -875,7 +875,7 @@ namespace Bank_App.Controllers
 
         // POST: Dashboard/PayLoanEMI
         [HttpPost]
-        public ActionResult PayLoanEMI(string loanAccountId, decimal paymentAmount, string paymentType)
+        public ActionResult PayLoanEMI(string loanAccountId, decimal paymentAmount, string paymentType, string paymentMethod)
         {
             // Check if user is customer
             if (Session["Role"]?.ToString().ToUpper() != "CUSTOMER")
@@ -888,7 +888,8 @@ namespace Bank_App.Controllers
 
             try
             {
-                var result = _loanService.PayEMI(loanAccountId, customerId, paymentAmount, paymentType);
+                // Pass paymentMethod to service
+                var result = _loanService.PayEMI(loanAccountId, customerId, paymentAmount, paymentType, paymentMethod);
 
                 if (result.IsSuccess)
                 {
@@ -1118,5 +1119,38 @@ namespace Bank_App.Controllers
 
             return RedirectToAction("Index");
         }
+
+        // GET: Dashboard/GetLoanOutstanding - Get current outstanding for a loan
+        [HttpGet]
+        public ActionResult GetLoanOutstanding(string loanAccountId)
+        {
+     // Check if user is customer
+       if (Session["Role"]?.ToString().ToUpper() != "CUSTOMER")
+            {
+       return Json(new { success = false, message = "Unauthorized" }, JsonRequestBehavior.AllowGet);
+   }
+
+            string customerId = Session["ReferenceID"]?.ToString();
+
+       try
+            {
+ // Get current outstanding balance using service
+        decimal outstanding = _loanService.GetOutstandingBalance(loanAccountId);
+ 
+             if (outstanding == 0)
+         {
+    return Json(new { success = false, message = "Could not fetch outstanding balance" }, JsonRequestBehavior.AllowGet);
+           }
+
+                return Json(new { 
+              success = true, 
+ outstanding = outstanding
+             }, JsonRequestBehavior.AllowGet);
+            }
+    catch (Exception ex)
+       {
+      return Json(new { success = false, message = ex.Message }, JsonRequestBehavior.AllowGet);
+     }
+     }
     }
 }

@@ -1,0 +1,71 @@
+﻿@{
+    ViewBag.Title = "Login";
+    Layout = "~/Views/Shared/Template.cshtml";
+}
+
+@section styles {
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-card {
+            max-width: 450px;
+            width: 100%;
+        }
+    </style>
+}
+
+<div class="container login-container">
+    <div class="login-card">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white text-center py-4">
+                <h3 class="mb-0">
+                    <i class="bi bi-bank2 me-2"></i>Gen Bank
+                </h3>
+                <p class="mb-0 mt-2">Welcome back! Please login to your account</p>
+            </div>
+            <div class="card-body p-4">
+                <!-- Login Form -->
+                <form method="post" action="@Url.Action("Login", "Auth")">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">
+                            <i class="bi bi-person me-1"></i>Username
+                        </label>
+                        <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">
+                            <i class="bi bi-lock me-1"></i>Password
+                        </label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 btn-lg">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>Login
+                    </button>
+                </form>
+            </div>
+            <div class="card-footer text-center text-muted">
+                <small>
+                    <i class="bi bi-shield-lock me-1"></i>
+                    Secure Banking System © 2025
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        // No scripts needed for simple login
+    </script>
+}

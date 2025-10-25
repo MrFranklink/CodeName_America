@@ -94,7 +94,9 @@
                     <h5 class="card-title text-primary">
                         <i class="bi bi-people-fill me-2"></i>Total Customers
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.CustomerCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.CustomerCount ?? 0)
+                        <span class="visually-hidden">total customers</span>
+                    </h2>
                 </div>
             </div>
         </div>
@@ -105,7 +107,9 @@
                     <h5 class="card-title text-info">
                         <i class="bi bi-credit-card-fill me-2"></i>Active Accounts
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.AccountCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.AccountCount ?? 0)
+                        <span class="visually-hidden">active accounts</span>
+                    </h2>
                 </div>
             </div>
         </div>
@@ -116,7 +120,9 @@
                     <h5 class="card-title text-success">
                         <i class="bi bi-graph-up-arrow me-2"></i>Transactions Today
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.TransactionCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.TransactionCount ?? 0)
+                        <span class="visually-hidden">transactions today</span>
+                    </h2>
                 </div>
             </div>
         </div>
@@ -479,6 +485,7 @@
                                         <th>PAN</th>
                                         <th>Phone</th>
                                         <th>DOB</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -490,6 +497,13 @@
                                             <td>@customer.Pan</td>
                                             <td>@customer.PhoneNumber</td>
                                             <td>@(customer.DOB?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                                            <td>
+                                                <!-- Edit Button -->
+                                                <button type="button" class="btn btn-sm btn-primary" 
+                                                        onclick="showEditCustomerModal('@customer.Custid', '@Html.Raw(customer.Custname.Replace("'", "\\'"))', '@Html.Raw((customer.Address ?? "").Replace("'", "\\'"))', '@customer.PhoneNumber')">
+                                                    <i class="bi bi-pencil me-1"></i>Edit
+                                                </button>
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -511,10 +525,34 @@
                     <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>All Accounts</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Search by Customer ID -->
+                    <div class="mb-4">
+                        <label class="form-label"><i class="bi bi-search me-2"></i>Search by Customer ID</label>
+                        <div class="input-group">
+                            <input type="text" id="searchCustomerId" class="form-control" 
+                                   placeholder="Enter Customer ID (e.g., MLA00001)" 
+                                   style="text-transform: uppercase;">
+                            <button class="btn btn-primary" type="button" onclick="filterAccountsByCustomer()">
+                                <i class="bi bi-search me-1"></i>Search
+                            </button>
+                            <button class="btn btn-secondary" type="button" onclick="clearCustomerFilter()">
+                                <i class="bi bi-x-circle me-1"></i>Clear
+                            </button>
+                        </div>
+                        <small class="text-muted">Leave empty and click "Search" to show all accounts</small>
+                    </div>
+
+                    <!-- Customer Filter Summary -->
+                    <div id="filterSummary" class="alert alert-info" style="display:none;">
+                        <i class="bi bi-funnel me-2"></i>
+                        <strong>Showing accounts for Customer ID:</strong> <span id="filteredCustomerId"></span>
+                        <span class="badge bg-primary ms-2" id="filteredCount"></span>
+                    </div>
+
                     @if (ViewBag.Accounts != null && ((List<AccountDTO>)ViewBag.Accounts).Count > 0)
                     {
                         <div class="table-responsive">
-                            <table class="table table-striped table-hover">
+                            <table class="table table-striped table-hover" id="accountsTable">
                                 <thead class="table-info">
                                     <tr>
                                         <th>Account ID</th>
@@ -527,7 +565,7 @@
                                 <tbody>
                                     @foreach (var account in (List<AccountDTO>)ViewBag.Accounts)
                                     {
-                                        <tr>
+                                        <tr data-customer-id="@account.CustomerID">
                                             <td><strong>@account.AccountID</strong></td>
                                             <td>
                                                 @if (account.AccountType == "SAVING")
@@ -543,7 +581,7 @@
                                                     <span class="badge bg-warning text-dark">Loan</span>
                                                 }
                                             </td>
-                                            <td>@account.CustomerID</td>
+                                            <td><strong>@account.CustomerID</strong></td>
                                             <td>@account.OpenDate.ToString("dd/MM/yyyy")</td>
                                             <td>
                                                 @if (account.Status == "OPEN")
@@ -579,6 +617,13 @@
                                     }
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- No Results Message -->
+                        <div id="noAccountsFound" class="alert alert-warning" style="display:none;">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>No accounts found for this customer ID.</strong>
+                            <p class="mb-0 mt-2">Please check the Customer ID and try again, or clear the filter to see all accounts.</p>
                         </div>
                     }
                     else
@@ -702,6 +747,43 @@
                 </div>
             </div>
         }
+    </div>
+</div>
+
+<!-- Edit Customer Modal -->
+<div class="modal fade" id="editCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Customer Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="@Url.Action("UpdateCustomer", "Dashboard")">
+                <div class="modal-body">
+                    <input type="hidden" name="custId" id="editCustId" />
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Note:</strong> PAN and Date of Birth cannot be changed.
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCustName" class="form-label"><strong>Customer Name</strong> <span class="text-danger">*</span></label>
+                        <input type="text" name="custName" id="editCustName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAddress" class="form-label"><strong>Address</strong> <span class="text-danger">*</span></label>
+                        <textarea name="address" id="editAddress" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPhoneNumber" class="form-label"><strong>Phone Number</strong> <span class="text-danger">*</span></label>
+                        <input type="tel" name="phoneNumber" id="editPhoneNumber" class="form-control" pattern="[6-9][0-9]{9}" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-2"></i>Update Profile</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -943,6 +1025,72 @@
             
             var modal = new bootstrap.Modal(document.getElementById('rejectModal'));
             modal.show();
+        }
+
+        // Allow Enter key to trigger search
+        document.addEventListener('DOMContentLoaded', function() {
+            var searchInput = document.getElementById('searchCustomerId');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        filterAccountsByCustomer();
+                    }
+                });
+            }
+        });
+
+        // Show Edit Customer Modal
+        function showEditCustomerModal(custId, custName, address, phoneNumber) {
+            document.getElementById('editCustId').value = custId;
+            document.getElementById('editCustName').value = custName;
+            document.getElementById('editAddress').value = address || '';
+            document.getElementById('editPhoneNumber').value = phoneNumber || '';
+            var modal = new bootstrap.Modal(document.getElementById('editCustomerModal'));
+            modal.show();
+        }
+
+        // Form data persistence functions
+        function saveFormData(formId) {
+            try {
+                var form = document.getElementById(formId);
+                if (!form) return;
+                var formData = {};
+                var inputs = form.querySelectorAll('input, select, textarea');
+                inputs.forEach(function(input) {
+                    if (input.name && input.type !== 'submit') {
+                        formData[input.name] = input.value;
+                    }
+                });
+                localStorage.setItem(formId, JSON.stringify(formData));
+            } catch (e) {
+                console.error('Error saving form data:', e);
+            }
+        }
+
+        function restoreFormData(formId) {
+            try {
+                var savedData = localStorage.getItem(formId);
+                if (!savedData) return;
+                var formData = JSON.parse(savedData);
+                var form = document.getElementById(formId);
+                if (!form) return;
+                Object.keys(formData).forEach(function(key) {
+                    var input = form.querySelector('[name="' + key + '"]');
+                    if (input && formData[key]) {
+                        input.value = formData[key];
+                    }
+                });
+            } catch (e) {
+                console.error('Error restoring form data:', e);
+            }
+        }
+
+        function clearFormData(formId) {
+            try {
+                localStorage.removeItem(formId);
+            } catch (e) {
+                console.error('Error clearing form data:', e);
+            }
         }
     </script>
 }

@@ -124,6 +124,84 @@ namespace BankApp.Services
             return _customerRepo.GetCustomerCount();
         }
 
+        /// <summary>
+        /// Update customer profile (Name, Address, Phone)
+        /// PAN and DOB cannot be changed
+        /// </summary>
+        public OperationResult UpdateCustomer(string custId, string custName, string address, string phoneNumber)
+        {
+            // Clean and normalize inputs
+            custName = custName?.Trim();
+            phoneNumber = phoneNumber?.Trim();
+            address = address?.Trim();
+
+            var validationRules = new List<Func<OperationResult>>
+            {
+                // Customer ID validation
+                () => string.IsNullOrWhiteSpace(custId) ? Error("Customer ID is required") : null,
+                
+                // Customer Name validations
+                () => string.IsNullOrWhiteSpace(custName) ? Error("Customer Name is required") : null,
+                () => custName.Length < 3 ? Error("Customer Name must be at least 3 characters long") : null,
+                () => custName.Length > 50 ? Error("Customer Name cannot exceed 50 characters") : null,
+                () => !System.Text.RegularExpressions.Regex.IsMatch(custName, @"^[a-zA-Z\s.]+$") 
+                    ? Error("Customer Name can only contain letters, spaces, and dots (.)") : null,
+                
+                // Phone Number validations
+                () => string.IsNullOrWhiteSpace(phoneNumber) ? Error("Phone Number is required") : null,
+                () => !System.Text.RegularExpressions.Regex.IsMatch(phoneNumber, @"^[6-9][0-9]{9}$") 
+                    ? Error("Phone Number must be a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9") : null,
+                
+                // Address validations
+                () => string.IsNullOrWhiteSpace(address) ? Error("Address is required") : null,
+                () => address.Length < 10 ? Error("Address must be at least 10 characters long") : null,
+                () => address.Length > 100 ? Error("Address cannot exceed 100 characters") : null
+            };
+
+            var validationError = validationRules.Select(rule => rule()).FirstOrDefault(result => result != null);
+            if (validationError != null) return validationError;
+
+            try
+            {
+                // Check if customer exists
+                if (!_customerRepo.CustomerExists(custId))
+                {
+                    return Error($"Customer with ID {custId} not found");
+                }
+
+                // Update customer
+                bool updated = _customerRepo.UpdateCustomer(custId, custName, address, phoneNumber);
+                
+                if (!updated)
+                {
+                    return Error("Failed to update customer profile. Please try again.");
+                }
+
+                return Success($"Customer profile updated successfully!", custId, null, null);
+            }
+            catch (Exception ex)
+            {
+                return Error($"Update failed: {ex.Message}");
+            }
+        }
+
+        public CustomerDTO GetCustomerById(string custId)
+        {
+            var customer = _customerRepo.GetCustomerById(custId);
+            if (customer == null)
+                return null;
+
+            return new CustomerDTO
+            {
+                Custid = customer.Custid,
+                Custname = customer.Custname,
+                DOB = customer.DOB,
+                Pan = customer.Pan,
+                Address = customer.Address,
+                PhoneNumber = customer.PhoneNumber
+            };
+        }
+
         private OperationResult Error(string message)
         {
             return new OperationResult

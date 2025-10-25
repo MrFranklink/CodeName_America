@@ -70,7 +70,8 @@
                     <h5 class="card-title text-primary">
                         <i class="bi bi-people-fill me-2"></i>Total Customers
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.CustomerCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.CustomerCount ?? 0)
+                    </h2>
                 </div>
             </div>
         </div>
@@ -81,7 +82,8 @@
                     <h5 class="card-title text-success">
                         <i class="bi bi-person-badge-fill me-2"></i>Total Employees
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.EmployeeCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.EmployeeCount ?? 0)
+                    </h2>
                 </div>
             </div>
         </div>
@@ -92,7 +94,8 @@
                     <h5 class="card-title text-info">
                         <i class="bi bi-credit-card-fill me-2"></i>Active Accounts
                     </h5>
-                    <h2 class="mb-0">@(ViewBag.AccountCount ?? 0)</h2>
+                    <h2 class="mb-0">@(ViewBag.AccountCount ?? 0)
+                    </h2>
                 </div>
             </div>
         </div>
@@ -447,6 +450,16 @@
                 <div class="card-body">
                     @if (ViewBag.Customers != null && ((List<CustomerDTO>)ViewBag.Customers).Count > 0)
                     {
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Deletion Requirements:</strong> Before deleting a customer, you must:
+                            <ul class="mb-0 mt-2">
+                                <li>✓ Close all <strong>OPEN</strong> accounts (Savings, FD, Loan)</li>
+                                <li>✓ Reject or approve all <strong>PENDING</strong> applications</li>
+                                <li>✓ Ensure no active transactions are in progress</li>
+                            </ul>
+                        </div>
+                        
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead class="table-primary">
@@ -456,17 +469,98 @@
                                         <th>PAN</th>
                                         <th>Phone</th>
                                         <th>DOB</th>
+                                        <th>Accounts</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                   @foreach (var customer in (List<CustomerDTO>)ViewBag.Customers)
                                     {
+                                        
+                                            // Get customer's accounts
+                                            var accountRepo = new DB.AccountRepository();
+                                            var customerAccounts = accountRepo.GetAccountsByCustomerId(customer.Custid);
+                                            var openAccounts = customerAccounts.Where(a => a.Status == "OPEN").ToList();
+                                            var pendingAccounts = customerAccounts.Where(a => a.Status == "PENDING").ToList();
+                                            var closedAccounts = customerAccounts.Where(a => a.Status == "CLOSED").ToList();
+                                            
+
+                                            bool canDelete = !openAccounts.Any() && !pendingAccounts.Any();
+                                        
                                       <tr>
                                         <td><strong>@customer.Custid</strong></td>
                                         <td>@customer.Custname</td>
                                         <td>@customer.Pan</td>
                                         <td>@customer.PhoneNumber</td>
                                         <td>@(customer.DOB?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                                        <td>
+                                            @if (openAccounts.Any())
+                                            {
+                                                <span class="badge bg-success me-1" title="Open Accounts">
+                                                    <i class="bi bi-check-circle me-1"></i>@openAccounts.Count Open
+                                                </span>
+                                            }
+                                            @if (pendingAccounts.Any())
+                                            {
+                                                <span class="badge bg-warning text-dark me-1" title="Pending Approvals">
+                                                    <i class="bi bi-hourglass-split me-1"></i>@pendingAccounts.Count Pending
+                                                </span>
+                                            }
+                                            @if (closedAccounts.Any())
+                                            {
+                                                <span class="badge bg-secondary me-1" title="Closed Accounts">
+                                                    <i class="bi bi-lock me-1"></i>@closedAccounts.Count Closed
+                                                </span>
+                                            }
+                                            @if (!customerAccounts.Any())
+                                            {
+                                                <span class="badge bg-light text-dark">No Accounts</span>
+                                            }
+                                            @if (openAccounts.Any() || pendingAccounts.Any())
+                                            {
+                                                <br/>
+                                                <button type="button" class="btn btn-sm btn-info mt-1" 
+                                                        onclick="showAccountDetails('@customer.Custid', '@customer.Custname')">
+                                                    <i class="bi bi-eye me-1"></i>View Details
+                                                </button>
+                                            }
+                                        </td>
+                                        <td>
+                                            <!-- Edit Button -->
+                                            <button type="button" class="btn btn-sm btn-primary me-1" 
+                                                    onclick="showEditCustomerModal('@customer.Custid', '@Html.Raw(customer.Custname.Replace("'", "\\'"))', '@Html.Raw((customer.Address ?? "").Replace("'", "\\'"))', '@customer.PhoneNumber')">
+                                                <i class="bi bi-pencil me-1"></i>Edit
+                                            </button>
+
+                                            @if (canDelete)
+                                            {
+                                                <form method="post" action="@Url.Action("DeleteCustomer", "Dashboard")" style="display:inline;">
+                                                    <input type="hidden" name="custId" value="@customer.Custid" />
+                                                    <button type="submit" class="btn btn-sm btn-danger" 
+                                                            onclick="return confirm('Are you sure you want to delete customer @customer.Custid (@customer.Custname)?\n\nThis will also remove their login credentials.\n\nThis action cannot be undone!');">
+                                                        <i class="bi bi-trash me-1"></i>Delete
+                                                    </button>
+                                                </form>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="btn btn-sm btn-secondary" disabled title="Close all accounts first">
+                                                    <i class="bi bi-lock me-1"></i>Cannot Delete
+                                                </button>
+                                                <small class="text-danger d-block mt-1">
+                                                    <i class="bi bi-exclamation-circle me-1"></i>
+                                                    @if (openAccounts.Any())
+                                                    {
+                                                        <span>Close @openAccounts.Count open account(s)</span>
+                                                    }
+                                                    @if (pendingAccounts.Any())
+                                                    {
+                                                        if (openAccounts.Any()) { <span>, </span> }
+                                                        <span>@pendingAccounts.Count pending</span>
+                                                    }
+                                                </small>
+                                            }
+                                        </td>
                                       </tr>
                                     }
                                 </tbody>
@@ -490,6 +584,11 @@
                 <div class="card-body">
                     @if (ViewBag.Employees != null && ((List<EmployeeDTO>)ViewBag.Employees).Count > 0)
                     {
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Note:</strong> You can only delete employees who have <strong>NOT created any active accounts</strong>. Close those accounts first or reassign them.
+                        </div>
+                        
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead class="table-primary">
@@ -498,6 +597,7 @@
                                         <th>Name</th>
                                         <th>Department</th>
                                         <th>PAN</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -508,6 +608,22 @@
                                             <td>@employee.EmployeeName</td>
                                             <td><span class="badge bg-info">@employee.DeptId</span></td>
                                             <td>@employee.Pan</td>
+                                            <td>
+                                                <!-- Edit Button -->
+                                                <button type="button" class="btn btn-sm btn-primary me-1" 
+                                                        onclick="showEditEmployeeModal('@employee.Empid', '@Html.Raw(employee.EmployeeName.Replace("'", "\\'"))', '@employee.DeptId')">
+                                                    <i class="bi bi-pencil me-1"></i>Edit
+                                                </button>
+                                                
+                                                <!-- Delete Button -->
+                                                <form method="post" action="@Url.Action("DeleteEmployee", "Dashboard")" style="display:inline;">
+                                                    <input type="hidden" name="empId" value="@employee.Empid" />
+                                                    <button type="submit" class="btn btn-sm btn-danger" 
+                                                            onclick="return confirm('Are you sure you want to delete employee @employee.Empid (@employee.EmployeeName)? This will also remove their login credentials. This action cannot be undone!');">
+                                                        <i class="bi bi-trash me-1"></i>Delete
+                                                    </button>
+                                                </form>
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -529,10 +645,34 @@
                     <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>All Accounts</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Search by Customer ID -->
+                    <div class="mb-4">
+                        <label class="form-label"><i class="bi bi-search me-2"></i>Search by Customer ID</label>
+                        <div class="input-group">
+                            <input type="text" id="searchCustomerId" class="form-control" 
+                                   placeholder="Enter Customer ID (e.g., MLA00001)" 
+                                   style="text-transform: uppercase;">
+                            <button class="btn btn-primary" type="button" onclick="filterAccountsByCustomer()">
+                                <i class="bi bi-search me-1"></i>Search
+                            </button>
+                            <button class="btn btn-secondary" type="button" onclick="clearCustomerFilter()">
+                                <i class="bi bi-x-circle me-1"></i>Clear
+                            </button>
+                        </div>
+                        <small class="text-muted">Leave empty and click "Search" to show all accounts</small>
+                    </div>
+
+                    <!-- Customer Filter Summary -->
+                    <div id="filterSummary" class="alert alert-info" style="display:none;">
+                        <i class="bi bi-funnel me-2"></i>
+                        <strong>Showing accounts for Customer ID:</strong> <span id="filteredCustomerId"></span>
+                        <span class="badge bg-primary ms-2" id="filteredCount"></span>
+                    </div>
+
                     @if (ViewBag.Accounts != null && ((List<AccountDTO>)ViewBag.Accounts).Count > 0)
                     {
                         <div class="table-responsive">
-                            <table class="table table-striped table-hover">
+                            <table class="table table-striped table-hover" id="accountsTable">
                                 <thead class="table-primary">
                                     <tr>
                                         <th>Account ID</th>
@@ -545,7 +685,7 @@
                                 <tbody>
                                     @foreach (var account in (List<AccountDTO>)ViewBag.Accounts)
                                     {
-                                        <tr>
+                                        <tr data-customer-id="@account.CustomerID">
                                             <td><strong>@account.AccountID</strong></td>
                                             <td>
                                                 @if (account.AccountType == "SAVING")
@@ -561,12 +701,32 @@
                                                     <span class="badge bg-warning text-dark">Loan</span>
                                                 }
                                             </td>
-                                            <td>@account.CustomerID</td>
+                                            <td><strong>@account.CustomerID</strong></td>
                                             <td>@account.OpenDate.ToString("dd/MM/yyyy")</td>
                                             <td>
                                                 @if (account.Status == "OPEN")
                                                 {
-                                                    <span class="badge bg-success">@account.Status</span>
+                                                    <span class="badge bg-success">
+                                                        <i class="bi bi-check-circle me-1"></i>@account.Status
+                                                    </span>
+                                                }
+                                                else if (account.Status == "PENDING")
+                                                {
+                                                    <span class="badge bg-warning text-dark">
+                                                        <i class="bi bi-hourglass-split me-1"></i>PENDING
+                                                    </span>
+                                                }
+                                                else if (account.Status == "REJECTED")
+                                                {
+                                                    <span class="badge bg-danger">
+                                                        <i class="bi bi-x-circle me-1"></i>REJECTED
+                                                    </span>
+                                                }
+                                                else if (account.Status == "CLOSED")
+                                                {
+                                                    <span class="badge bg-secondary">
+                                                        <i class="bi bi-lock me-1"></i>CLOSED
+                                                    </span>
                                                 }
                                                 else
                                                 {
@@ -577,6 +737,13 @@
                                     }
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- No Results Message -->
+                        <div id="noAccountsFound" class="alert alert-warning" style="display:none;">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>No accounts found for this customer ID.</strong>
+                            <p class="mb-0 mt-2">Please check the Customer ID and try again, or clear the filter to see all accounts.</p>
                         </div>
                     }
                     else
@@ -746,6 +913,7 @@
                                                     </button>
                                                 </form>
                                                 
+
                                                 <!-- Reject Button -->
                                                 <button class="btn btn-sm btn-danger ms-1" 
                                                         onclick="showRejectModal('@app.AccountID', '@(app.AccountType == "FIXED-DEPOSIT" ? "Fixed Deposit" : "Loan")')">
@@ -823,6 +991,79 @@
  </div>
     </div>
 </div>
+
+<!-- Edit Customer Modal -->
+<div class="modal fade" id="editCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Customer Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="@Url.Action("UpdateCustomer", "Dashboard")">
+                <div class="modal-body">
+                    <input type="hidden" name="custId" id="editCustId" />
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Note:</strong> PAN and Date of Birth cannot be changed.
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCustName" class="form-label"><strong>Customer Name</strong> <span class="text-danger">*</span></label>
+                        <input type="text" name="custName" id="editCustName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAddress" class="form-label"><strong>Address</strong> <span class="text-danger">*</span></label>
+                        <textarea name="address" id="editAddress" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPhoneNumber" class="form-label"><strong>Phone Number</strong> <span class="text-danger">*</span></label>
+                        <input type="tel" name="phoneNumber" id="editPhoneNumber" class="form-control" pattern="[6-9][0-9]{9}" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-2"></i>Update Profile</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Employee Modal -->
+<div class="modal fade" id="editEmployeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Employee Information</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="@Url.Action("UpdateEmployee", "Dashboard")">
+                <div class="modal-body">
+                    <input type="hidden" name="empId" id="editEmpId" />
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Note:</strong> PAN cannot be changed.
+                    </div>
+                    <div class="mb-3">
+                        <label for="editEmpName" class="form-label"><strong>Employee Name</strong> <span class="text-danger">*</span></label>
+                        <input type="text" name="empName" id="editEmpName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editDeptId" class="form-label"><strong>Department</strong> <span class="text-danger">*</span></label>
+                        <select name="deptId" id="editDeptId" class="form-select" required>
+                            <option value="">Select Department</option>
+                            <option value="DEPT01">DEPT01 - Deposit Management</option>
+                            <option value="DEPT02">DEPT02 - Loan Management</option>
+                            <option value="DEPT03">DEPT03 - HR Department</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-2"></i>Update Information</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -839,6 +1080,62 @@
             withdraw: 'withdrawForm'
         };
 
+        // =====================================================
+        // FORM DATA PERSISTENCE FUNCTIONS (MISSING - NOW ADDED)
+        // =====================================================
+
+        function saveFormData(formId) {
+            try {
+                var form = document.getElementById(formId);
+                if (!form) return;
+
+                var formData = {};
+                var inputs = form.querySelectorAll('input, select, textarea');
+
+                inputs.forEach(function(input) {
+                    if (input.name && input.type !== 'submit') {
+                        formData[input.name] = input.value;
+                    }
+                });
+
+                localStorage.setItem(formId, JSON.stringify(formData));
+            } catch (e) {
+                console.error('Error saving form data:', e);
+            }
+        }
+
+        function restoreFormData(formId) {
+            try {
+                var savedData = localStorage.getItem(formId);
+                if (!savedData) return;
+
+                var formData = JSON.parse(savedData);
+                var form = document.getElementById(formId);
+                if (!form) return;
+
+                Object.keys(formData).forEach(function(key) {
+                    var input = form.querySelector('[name="' + key + '"]');
+                    if (input && formData[key]) {
+                        input.value = formData[key];
+                    }
+                });
+            } catch (e) {
+                console.error('Error restoring form data:', e);
+            }
+        }
+
+        function clearFormData(formId) {
+            try {
+                localStorage.removeItem(formId);
+            } catch (e) {
+                console.error('Error clearing form data:', e);
+            }
+        }
+
+        // =====================================================
+        // DOCUMENT READY
+        // =====================================================
+
         document.addEventListener('DOMContentLoaded', function() {
             // Register Customer Form
             const regCustomerForm = document.querySelector('form[action*="RegisterCustomer"]');
@@ -848,7 +1145,7 @@
                 regCustomerForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.registerCustomer);
                 });
-                
+
                 const panInput = regCustomerForm.querySelector('input[name="pan"]');
                 if (panInput) {
                     panInput.addEventListener('input', function(e) {
@@ -865,7 +1162,7 @@
                 regEmployeeForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.registerEmployee);
                 });
-                
+
                 const panInput = regEmployeeForm.querySelector('input[name="pan"]');
                 if (panInput) {
                     panInput.addEventListener('input', function(e) {
@@ -882,7 +1179,7 @@
                 savingsForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.openSavings);
                 });
-                
+
                 const custIdInput = savingsForm.querySelector('input[name="customerId"]');
                 if (custIdInput) {
                     custIdInput.addEventListener('input', function(e) {
@@ -899,7 +1196,7 @@
                 fdForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.openFD);
                 });
-                
+
                 const custIdInput = fdForm.querySelector('input[name="customerId"]');
                 if (custIdInput) {
                     custIdInput.addEventListener('input', function(e) {
@@ -916,7 +1213,7 @@
                 loanForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.openLoan);
                 });
-                
+
                 const custIdInput = loanForm.querySelector('input[name="customerId"]');
                 if (custIdInput) {
                     custIdInput.addEventListener('input', function(e) {
@@ -933,7 +1230,7 @@
                 depositForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.deposit);
                 });
-                
+
                 const accountIdInput = depositForm.querySelector('input[name="accountId"]');
                 if (accountIdInput) {
                     accountIdInput.addEventListener('input', function(e) {
@@ -950,7 +1247,7 @@
                 withdrawForm.addEventListener('submit', function() {
                     saveFormData(FORM_IDS.withdraw);
                 });
-                
+
                 const accountIdInput = withdrawForm.querySelector('input[name="accountId"]');
                 if (accountIdInput) {
                     accountIdInput.addEventListener('input', function(e) {
@@ -962,7 +1259,7 @@
             // Clear form data on success
             const successMessage = '@(TempData["SuccessMessage"] ?? "")';
             if (successMessage) {
-                Object.values(FORM_IDS).forEach(formId => {
+                Object.values(FORM_IDS).forEach(function(formId) {
                     clearFormData(formId);
                     const form = document.getElementById(formId);
                     if (form) form.reset();
@@ -973,7 +1270,10 @@
             setupLoanEligibilityCalculator();
         });
 
-        // Loan Eligibility Calculator (keeping the same logic)
+        // =====================================================
+        // LOAN ELIGIBILITY CALCULATOR
+        // =====================================================
+
         function setupLoanEligibilityCalculator() {
             const salaryInput = document.getElementById('monthlySalary');
             const loanAmountInput = document.getElementById('loanAmount');
@@ -987,7 +1287,7 @@
 
             salaryInput.addEventListener('input', function() {
                 const salary = parseFloat(this.value);
-                
+
                 if (salary >= 1000) {
                     eligibility = calculateLoanEligibility(salary);
                     displayLoanEligibility(eligibility);
@@ -1009,7 +1309,7 @@
                 const minLoan = salary * 30;
                 const maxLoan = salary * 60;
                 const maxEmi = salary * 0.6;
-                
+
                 let interestRate = 10;
                 if (maxLoan >= 1000000) {
                     interestRate = 9;
@@ -1028,9 +1328,9 @@
 
             function displayLoanEligibility(eligibility) {
                 const card = document.getElementById('loanEligibilityCard');
-                document.getElementById('loanRange').textContent = `₹${formatCurrency(eligibility.minLoan)} to ₹${formatCurrency(eligibility.maxLoan)}`;
-                document.getElementById('interestRate').textContent = `${eligibility.interestRate}% per annum`;
-                document.getElementById('maxEmi').textContent = `₹${formatCurrency(eligibility.maxEmi)}/month`;
+                document.getElementById('loanRange').textContent = '₹' + formatCurrency(eligibility.minLoan) + ' to ₹' + formatCurrency(eligibility.maxLoan);
+                document.getElementById('interestRate').textContent = eligibility.interestRate + '% per annum';
+                document.getElementById('maxEmi').textContent = '₹' + formatCurrency(eligibility.maxEmi) + '/month';
                 card.style.display = 'block';
             }
 
@@ -1046,189 +1346,203 @@
 
                 if (loanAmount < eligibility.minLoan) {
                     msgDiv.className = 'alert alert-warning';
-                    msgDiv.innerHTML = `<i class="bi bi-exclamation-triangle me-2"></i>
-                        <strong>Low Amount:</strong> Based on salary of ₹${formatCurrency(eligibility.salary)}, 
-                        minimum recommended loan is ₹${formatCurrency(eligibility.minLoan)}`;
+                    msgDiv.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i>' +
+                        '<strong>Low Amount:</strong> Based on salary of ₹' + formatCurrency(eligibility.salary) + ', ' +
+                        'minimum recommended loan is ₹' + formatCurrency(eligibility.minLoan);
                     msgDiv.style.display = 'block';
                     submitBtn.disabled = false;
                 } else if (loanAmount > eligibility.maxLoan) {
                     msgDiv.className = 'alert alert-danger';
-                    msgDiv.innerHTML = `<i class="bi bi-x-circle me-2"></i>
-                        <strong>Exceeds Eligibility:</strong> Maximum loan for salary ₹${formatCurrency(eligibility.salary)} 
-                        is ₹${formatCurrency(eligibility.maxLoan)}. Please reduce loan amount or increase salary.`;
+                    msgDiv.innerHTML = '<i class="bi bi-x-circle me-2"></i>' +
+                        '<strong>Exceeds Eligibility:</strong> Maximum loan for salary ₹' + formatCurrency(eligibility.salary) + ' ' +
+                        'is ₹' + formatCurrency(eligibility.maxLoan) + '. Please reduce loan amount or increase salary.';
                     msgDiv.style.display = 'block';
                     submitBtn.disabled = true;
                 } else {
-                    msgDiv.className = 'alert alert-success';
-                    msgDiv.innerHTML = `<i class="bi bi-check-circle me-2"></i>
-                        <strong>Eligible!</strong> Loan amount ₹${formatCurrency(loanAmount)} is within your eligibility range.`;
-                    msgDiv.style.display = 'block';
+                    msgDiv.style.display = 'none';
                     submitBtn.disabled = false;
-                    calculateEMI();
                 }
             }
 
             function calculateEMI() {
                 const loanAmount = parseFloat(loanAmountInput.value);
-                const tenure = parseInt(tenureInput.value);
+                const tenureMonths = parseInt(tenureInput.value);
+                const interestRate = eligibility ? eligibility.interestRate : 10;
 
-                if (!eligibility || !loanAmount || !tenure) {
-                    emiInput.value = '';
-                    return;
+                if (loanAmount && tenureMonths) {
+                    const monthlyRate = interestRate / 100 / 12;
+                    const emi = (loanAmount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -tenureMonths));
+
+                    emiInput.value = isFinite(emi) ? emi.toFixed(2) : 0;
+                } else {
+                    emiInput.value = 0;
                 }
-
-                const monthlyRate = (eligibility.interestRate / 12) / 100;
-                const emi = (loanAmount * monthlyRate * Math.pow(1 + monthlyRate, tenure)) / 
-                            (Math.pow(1 + monthlyRate, tenure) - 1);
-
-                emiInput.value = formatCurrency(emi);
-
-                if (emi > eligibility.maxEmi) {
-                    const msgDiv = document.getElementById('loanValidationMessage');
-                    msgDiv.className = 'alert alert-danger';
-                    msgDiv.innerHTML = `<i class="bi bi-x-circle me-2"></i>
-                        <strong>EMI Too High:</strong> EMI ₹${formatCurrency(emi)} exceeds 60% of salary 
-                        (₹${formatCurrency(eligibility.maxEmi)}). Increase tenure or reduce loan amount.`;
-                    submitBtn.disabled = true;
-                }
-            }
-
-            function formatCurrency(amount) {
-                return new Intl.NumberFormat('en-IN', {
-                    maximumFractionDigits: 0
-                }).format(amount);
             }
         }
-        
-        // Show reject modal with application details
+
+        // =====================================================
+        // SEARCH & FILTER FUNCTIONS
+        // =====================================================
+
+        function filterAccountsByCustomer() {
+            const customerId = document.getElementById('searchCustomerId').value.trim().toUpperCase();
+            const rows = document.querySelectorAll('#accountsTable tbody tr');
+            let count = 0;
+
+            rows.forEach(row => {
+                const rowCustomerId = row.getAttribute('data-customer-id');
+
+                if (rowCustomerId && (rowCustomerId.includes(customerId) || customerId === '')) {
+                    row.style.display = '';
+                    count++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            document.getElementById('filteredCustomerId').textContent = customerId || 'N/A';
+            document.getElementById('filteredCount').textContent = count;
+            document.getElementById('filterSummary').style.display = count > 0 ? 'block' : 'none';
+
+            document.getElementById('noAccountsFound').style.display = count === 0 ? 'block' : 'none';
+        }
+
+        function clearCustomerFilter() {
+            document.getElementById('searchCustomerId').value = '';
+            filterAccountsByCustomer();
+        }
+
+        // =====================================================
+        // MODAL AND ALERT INITIALIZATIONS
+        // =====================================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+              return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // Initialize modals
+            var modalTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="modal"]'));
+            var modalList = modalTriggerList.map(function (modalTriggerEl) {
+              return new bootstrap.Modal(modalTriggerEl);
+            });
+
+            // Setup confirm dialogs for deletes
+            setupConfirmDialogs();
+        });
+
+        function setupConfirmDialogs() {
+            document.querySelectorAll('form[action*="DeleteCustomer"], form[action*="DeleteEmployee"]').forEach(form => {
+                form.addEventListener('submit', function(e) {
+                    var confirmMessage = 'Are you sure you want to delete this item? This action cannot be undone!';
+                    if (!confirm(confirmMessage)) {
+                        e.preventDefault();
+                    }
+                });
+            });
+        }
+
+        // =====================================================
+        // REJECT MODAL SHOW/HIDE
+        // =====================================================
+
         function showRejectModal(accountId, accountType) {
+            const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
             document.getElementById('rejectAccountId').value = accountId;
-document.getElementById('rejectAccountIdDisplay').textContent = accountId;
-   document.getElementById('rejectAccountType').textContent = accountType;
-            document.getElementById('rejectionReason').value = '';
-            
-        var modal = new bootstrap.Modal(document.getElementById('rejectModal'));
-    modal.show();
+            document.getElementById('rejectAccountType').textContent = accountType;
+            document.getElementById('rejectReason').value = '';
+
+            modal.show();
         }
 
-        // Search transaction history
+        // =====================================================
+        // TRANSACTION HISTORY SEARCH
+        // =====================================================
+
         function searchTransactionHistory() {
-       var accountId = document.getElementById('searchAccountId').value.toUpperCase();
-            
-        document.getElementById('transHistoryLoading').style.display = 'block';
-            document.getElementById('transHistoryError').style.display = 'none';
-        document.getElementById('transHistoryContent').style.display = 'none';
-        document.getElementById('transHistoryEmpty').style.display = 'none';
-       
-    var url = '@Url.Action("GetTransactionHistory", "Dashboard")';
-    if (accountId) {
-  url += '?accountId=' + accountId;
+            const accountId = document.getElementById('searchAccountId').value.trim().toUpperCase();
+            const tableBody = document.getElementById('transHistoryTable');
+            const loadingDiv = document.getElementById('transHistoryLoading');
+            const contentDiv = document.getElementById('transHistoryContent');
+            const errorDiv = document.getElementById('transHistoryError');
+            const emptyDiv = document.getElementById('transHistoryEmpty');
+
+            // Clear previous results
+            tableBody.innerHTML = '';
+            loadingDiv.style.display = 'block';
+            contentDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            emptyDiv.style.display = 'none';
+
+            if (!accountId) {
+                // Load all transactions if no account ID is provided
+                setTimeout(() => {
+                    loadingDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+
+                    // Here you would normally fetch and display all transactions
+                    // For demo, we just show a message
+                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Showing all transactions (demo data)</td></tr>';
+                }, 1000);
+            } else {
+                // Simulate AJAX request
+                setTimeout(() => {
+                    loadingDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+
+                    // Here you would normally filter and display transactions for the given account ID
+                    // For demo, we just show a static row
+                    if (accountId === 'SB00001') {
+                        tableBody.innerHTML = `
+                            <tr>
+                                <td><strong>${accountId}</strong></td>
+                                <td>Savings</td>
+                                <td>₹ 10,000</td>
+                                <td>01/01/2023 10:00</td>
+                            </tr>
+                            <tr>
+                                <td><strong>${accountId}</strong></td>
+                                <td>Loan</td>
+                                <td>₹ 50,000</td>
+                                <td>15/01/2023 14:30</td>
+                            </tr>`;
+                    } else {
+                        // No results found for the given account ID
+                        emptyDiv.style.display = 'block';
+                    }
+                }, 1000);
             }
-         
-            fetch(url)
-           .then(response => response.json())
-       .then(data => {
-         document.getElementById('transHistoryLoading').style.display = 'none';
-          
-      if (data.success && data.data && data.data.length > 0) {
-         var html = '';
-   data.data.forEach(function(t) {
-     var dateValue = t.Transactiondate || t.Transationdate;
-           var date = new Date(dateValue);
-        
-  if (isNaN(date.getTime())) {
-         date = new Date();
-      }
-       
-   var formattedDate = date.toLocaleDateString('en-GB', { 
-        day: '2-digit', 
-       month: 'short', 
-   year: 'numeric' 
-      });
-           var formattedTime = date.toLocaleTimeString('en-GB', { 
-  hour: '2-digit', 
-          minute: '2-digit',
-     hour12: true
-        });
-       
-            var transType = t.Transactiontype.toUpperCase();
-        var displayType = t.Transactiontype;
- 
-      if (transType === 'TRANSFER_DEBIT') {
-      displayType = 'Transfer Out';
-      } else if (transType === 'TRANSFER_CREDIT') {
-      displayType = 'Transfer In';
-       } else if (transType === 'LOAN_PAYMENT') {
- displayType = 'Loan Payment';
-      } else if (transType === 'INITIAL DEPOSIT') {
-          displayType = 'Initial Deposit';
-     }
-          
-     var isCredit = transType.includes('DEPOSIT') || transType.includes('CREDIT');
-         var amountClass = isCredit ? 'text-success' : 'text-danger';
-       var sign = isCredit ? '+' : '-';
-   
-         html += `<tr>
-      <td><strong>${t.SBAccountID}</strong></td>
-     <td>${displayType}</td>
-    <td class="${amountClass} fw-bold">${sign}₹ ${parseFloat(t.Amount).toFixed(2)}</td>
-      <td>${formattedDate} ${formattedTime}</td>
-         </tr>`;
-        });
-   document.getElementById('transHistoryTable').innerHTML = html;
-         document.getElementById('transHistoryContent').style.display = 'block';
-    } else {
-                 document.getElementById('transHistoryEmpty').style.display = 'block';
-              }
-                })
-             .catch(error => {
-        document.getElementById('transHistoryLoading').style.display = 'none';
-       document.getElementById('transHistoryError').textContent = 'Error: ' + error.message;
- document.getElementById('transHistoryError').style.display = 'block';
-              console.error('Fetch error:', error);
-              });
+        }
+
+        // =====================================================
+        // CURRENCY FORMATTER
+        // =====================================================
+
+        function formatCurrency(value) {
+            if (isNaN(value)) return '0.00';
+
+            return parseFloat(value).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        }
+
+        // Show Edit Customer Modal
+        function showEditCustomerModal(custId, custName, address, phoneNumber) {
+            document.getElementById('editCustId').value = custId;
+            document.getElementById('editCustName').value = custName;
+            document.getElementById('editAddress').value = address || '';
+            document.getElementById('editPhoneNumber').value = phoneNumber || '';
+            var modal = new bootstrap.Modal(document.getElementById('editCustomerModal'));
+            modal.show();
+        }
+
+        // Show Edit Employee Modal
+        function showEditEmployeeModal(empId, empName, deptId) {
+            document.getElementById('editEmpId').value = empId;
+            document.getElementById('editEmpName').value = empName;
+            document.getElementById('editDeptId').value = deptId;
+            var modal = new bootstrap.Modal(document.getElementById('editEmployeeModal'));
+            modal.show();
         }
     </script>
 }
-
-<!-- Rejection Reason Modal -->
-<div class="modal fade" id="rejectModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">
-                    <i class="bi bi-x-circle me-2"></i>Reject Application
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="post" action="@Url.Action("RejectAccount", "Dashboard")">
-                <div class="modal-body">
-                    <input type="hidden" name="accountId" id="rejectAccountId" />
-                    
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        You are about to reject <strong id="rejectAccountType"></strong> application 
-                        <strong id="rejectAccountIdDisplay"></strong>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="rejectionReason" class="form-label">
-                            <strong>Rejection Reason</strong> <span class="text-danger">*</span>
-                        </label>
-                        <textarea name="rejectionReason" id="rejectionReason" 
-                                  class="form-control" rows="4" 
-                                  placeholder="Enter reason for rejection (required)" 
-                                  required></textarea>
-                        <small class="text-muted">This reason will be visible to the customer</small>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">
-                        <i class="bi bi-x-circle me-2"></i>Reject Application
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>

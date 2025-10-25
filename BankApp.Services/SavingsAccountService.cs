@@ -39,11 +39,11 @@ namespace BankApp.Services
             var validationError = validationRules.Select(rule => rule()).FirstOrDefault(result => result != null);
             if (validationError != null) return validationError;
 
+            // Generate Savings Account ID
+            string sbAccountId = IdGenerator.GenerateSavingsAccountId();
+
             try
             {
-                // Generate Savings Account ID
-                string sbAccountId = IdGenerator.GenerateSavingsAccountId();
-
                 // Create master account entry
                 bool accountCreated = _accountRepo.CreateAccount(sbAccountId, "SAVING", customerId, openedBy, openedByRole);
                 if (!accountCreated)
@@ -56,6 +56,29 @@ namespace BankApp.Services
                 bool savingsCreated = _savingsRepo.CreateSavingsAccount(sbAccountId, customerId, initialDeposit, out errorMessage);
                 if (!savingsCreated)
                 {
+                    // ROLLBACK: Delete the Account entry that was just created
+                    System.Diagnostics.Debug.WriteLine($"Savings account creation failed. Rolling back Account entry {sbAccountId}");
+                    _accountRepo.CloseAccount(sbAccountId); // This will mark it as closed or we need a delete method
+                    
+                    // Try to actually delete it from database
+                    try
+                    {
+                        using (var context = new DB.Banking_DetailsEntities())
+                        {
+                            var accountToDelete = context.Accounts.Find(sbAccountId);
+                            if (accountToDelete != null)
+                            {
+                                context.Accounts.Remove(accountToDelete);
+                                context.SaveChanges();
+                                System.Diagnostics.Debug.WriteLine($"Successfully deleted orphan Account entry {sbAccountId}");
+                            }
+                        }
+                    }
+                    catch (Exception rollbackEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Rollback failed: {rollbackEx.Message}");
+                    }
+                    
                     return Error($"Failed to create savings account: {errorMessage ?? "Unknown error"}");
                 }
 
@@ -63,6 +86,26 @@ namespace BankApp.Services
             }
             catch (Exception ex)
             {
+                // ROLLBACK: If any exception occurs, try to delete the Account entry
+                System.Diagnostics.Debug.WriteLine($"Exception during account creation. Attempting rollback of {sbAccountId}");
+                try
+                {
+                    using (var context = new DB.Banking_DetailsEntities())
+                    {
+                        var accountToDelete = context.Accounts.Find(sbAccountId);
+                        if (accountToDelete != null)
+                        {
+                            context.Accounts.Remove(accountToDelete);
+                            context.SaveChanges();
+                            System.Diagnostics.Debug.WriteLine($"Successfully rolled back Account entry {sbAccountId}");
+                        }
+                    }
+                }
+                catch (Exception rollbackEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Rollback failed: {rollbackEx.Message}");
+                }
+                
                 return Error($"Failed to open savings account: {ex.Message}");
             }
         }

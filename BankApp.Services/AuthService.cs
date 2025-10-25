@@ -82,7 +82,7 @@ namespace BankApp.Services
         /// </summary>
         public LoginResult ChangePassword(string userId, string oldPassword, string newPassword, string confirmNewPassword)
         {
-            var validationRules = new List<Func<LoginResult>>
+            var validationRules = new List<Func<LoginResult>> 
             {
                 () => string.IsNullOrWhiteSpace(oldPassword) ? Error("Current password is required") : null,
                 () => string.IsNullOrWhiteSpace(newPassword) ? Error("New password is required") : null,

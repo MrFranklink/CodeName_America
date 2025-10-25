@@ -139,5 +139,36 @@ namespace DB
                 return null;
             }
         }
+
+        /// <summary>
+        /// Update customer profile information
+        /// </summary>
+        public bool UpdateCustomer(string custId, string custName, string address, string phoneNumber)
+        {
+            try
+            {
+                using (var context = new Banking_DetailsEntities())
+                {
+                    var customer = context.Customers.Find(custId);
+                    if (customer == null)
+                    {
+                        return false;
+                    }
+
+                    // Update editable fields (PAN and DOB cannot be changed)
+                    customer.Custname = custName;
+                    customer.Address = address;
+                    customer.PhoneNumber = phoneNumber;
+
+                    context.SaveChanges();
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ERROR in UpdateCustomer: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

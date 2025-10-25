@@ -47,6 +47,9 @@ namespace BankApp.Services
             var validationError = validationRules.Select(rule => rule()).FirstOrDefault(result => result != null);
             if (validationError != null) return validationError;
 
+            // Generate Loan Account ID
+            string lnAccountId = IdGenerator.GenerateLoanAccountId();
+
             try
             {
                 // Get customer to check if senior citizen
@@ -83,9 +86,6 @@ namespace BankApp.Services
                     return Error($"EMI amount (Rs. {emi:N2}) exceeds 60% of monthly salary (Rs. {maxAllowedEMI:N2}). Please reduce loan amount or increase tenure.");
                 }
 
-                // Generate Loan Account ID
-                string lnAccountId = IdGenerator.GenerateLoanAccountId();
-
                 // Create master account entry with PENDING status (requires manager approval)
                 bool accountCreated = _accountRepo.CreateAccountWithStatus(
                     lnAccountId, 
@@ -105,6 +105,26 @@ namespace BankApp.Services
                 bool loanCreated = _loanRepo.CreateLoanAccount(lnAccountId, customerId, loanAmount, startDate, tenureMonths, interestRate, emi);
                 if (!loanCreated)
                 {
+                    // ROLLBACK: Delete the Account entry that was just created
+                    System.Diagnostics.Debug.WriteLine($"Loan account creation failed. Rolling back Account entry {lnAccountId}");
+                    try
+                    {
+                        using (var context = new DB.Banking_DetailsEntities())
+                        {
+                            var accountToDelete = context.Accounts.Find(lnAccountId);
+                            if (accountToDelete != null)
+                            {
+                                context.Accounts.Remove(accountToDelete);
+                                context.SaveChanges();
+                                System.Diagnostics.Debug.WriteLine($"Successfully deleted orphan Account entry {lnAccountId}");
+                            }
+                        }
+                    }
+                    catch (Exception rollbackEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Rollback failed: {rollbackEx.Message}");
+                    }
+                    
                     return Error("Failed to create loan account");
                 }
 
@@ -120,6 +140,26 @@ namespace BankApp.Services
             }
             catch (Exception ex)
             {
+                // ROLLBACK: If any exception occurs, try to delete the Account entry
+                System.Diagnostics.Debug.WriteLine($"Exception during loan account creation. Attempting rollback of {lnAccountId}");
+                try
+                {
+                    using (var context = new DB.Banking_DetailsEntities())
+                    {
+                        var accountToDelete = context.Accounts.Find(lnAccountId);
+                        if (accountToDelete != null)
+                        {
+                            context.Accounts.Remove(accountToDelete);
+                            context.SaveChanges();
+                            System.Diagnostics.Debug.WriteLine($"Successfully rolled back Account entry {lnAccountId}");
+                        }
+                    }
+                }
+                catch (Exception rollbackEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Rollback failed: {rollbackEx.Message}");
+                }
+                
                 return Error($"Failed to open loan account: {ex.Message}");
             }
         }
@@ -253,137 +293,143 @@ namespace BankApp.Services
             try
             {
                 System.Diagnostics.Debug.WriteLine("=== PayEMI Called ===");
-System.Diagnostics.Debug.WriteLine($"Loan Account: {loanAccountId}");
-      System.Diagnostics.Debug.WriteLine($"Customer: {customerId}");
- System.Diagnostics.Debug.WriteLine($"Amount: {paymentAmount}");
-System.Diagnostics.Debug.WriteLine($"Payment Type: {paymentType}");
-   System.Diagnostics.Debug.WriteLine($"Payment Method: {paymentMethod}");
+                System.Diagnostics.Debug.WriteLine($"Loan Account: {loanAccountId}");
+                System.Diagnostics.Debug.WriteLine($"Customer: {customerId}");
+                System.Diagnostics.Debug.WriteLine($"Amount: {paymentAmount}");
+                System.Diagnostics.Debug.WriteLine($"Payment Type: {paymentType}");
+                System.Diagnostics.Debug.WriteLine($"Payment Method: {paymentMethod}");
 
-      // Get loan account
-          var loanAccount = _loanRepo.GetLoanAccountById(loanAccountId);
-           if (loanAccount == null)
-{
-       return Error("Loan account not found");
-             }
+                // Get loan account
+                var loanAccount = _loanRepo.GetLoanAccountById(loanAccountId);
+                if (loanAccount == null)
+                {
+                    return Error("Loan account not found");
+                }
 
-         // Verify ownership
-      if (loanAccount.Customer != customerId)
-      {
-              return Error("This loan account does not belong to you");
-     }
+                // Verify ownership
+                if (loanAccount.Customer != customerId)
+                {
+                    return Error("This loan account does not belong to you");
+                }
+
+                // CHECK IF LOAN HAS STARTED
+                if (loanAccount.Start_date > DateTime.Now.Date)
+                {
+                    return Error($"Cannot pay EMI yet. Loan starts on {loanAccount.Start_date:dd/MM/yyyy}. First payment will be due after that date.");
+                }
 
                 // Get latest outstanding balance
-          var loanTransactionRepo = new LoanTransactionRepository();
- var lastTransaction = loanTransactionRepo.GetLatestTransaction(loanAccountId);
-      decimal outstanding = lastTransaction?.Outstanding ?? (loanAccount.loan_amount ?? 0);
+                var loanTransactionRepo = new LoanTransactionRepository();
+                var lastTransaction = loanTransactionRepo.GetLatestTransaction(loanAccountId);
+                decimal outstanding = lastTransaction?.Outstanding ?? (loanAccount.loan_amount ?? 0);
 
-         // Validate payment amount
-      decimal emi = loanAccount.Emi ?? 0;
-       
-  if (paymentType == "EMI" && paymentAmount < emi)
-     {
-   return Error($"Regular EMI payment must be at least Rs. {emi:N2}");
-  }
+                // Validate payment amount
+                decimal emi = loanAccount.Emi ?? 0;
+                
+                if (paymentType == "EMI" && paymentAmount < emi)
+                {
+                    return Error($"Regular EMI payment must be at least Rs. {emi:N2}");
+                }
 
-     if (paymentAmount > outstanding)
-       {
-     return Error($"Payment amount (Rs. {paymentAmount:N2}) exceeds outstanding loan balance (Rs. {outstanding:N2})");
-           }
+                if (paymentAmount > outstanding)
+                {
+                    return Error($"Payment amount (Rs. {paymentAmount:N2}) exceeds outstanding loan balance (Rs. {outstanding:N2})");
+                }
 
-          // Calculate new outstanding
+                // Calculate new outstanding
                 decimal newOutstanding = outstanding - paymentAmount;
 
-     // Handle payment based on method
-            if (paymentMethod == "FD_ACCOUNT")
-        {
-      return PayFromFD(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
-  }
-  else // SAVINGS_ACCOUNT (default)
-     {
-    return PayFromSavings(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
-      }
+                // Handle payment based on method
+                if (paymentMethod == "FD_ACCOUNT")
+                {
+                    return PayFromFD(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
+                }
+                else // SAVINGS_ACCOUNT (default)
+                {
+                    return PayFromSavings(customerId, loanAccountId, paymentAmount, newOutstanding, paymentType);
+                }
             }
-         catch (Exception ex)
+            catch (Exception ex)
+            {
+                return Error($"Payment failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Pay EMI from Savings Account
+        /// </summary>
+        private AccountOperationResult PayFromSavings(string customerId, string loanAccountId, decimal paymentAmount, decimal newOutstanding, string paymentType)
         {
-   return Error($"Payment failed: {ex.Message}");
- }
-      }
-
-     /// <summary>
-    /// Pay EMI from Savings Account
-      /// </summary>
-      private AccountOperationResult PayFromSavings(string customerId, string loanAccountId, decimal paymentAmount, decimal newOutstanding, string paymentType)
-   {
-   var savingsRepo = new SavingsAccountRepository();
-      var savingsAccount = savingsRepo.GetSavingsAccountByCustomerId(customerId);
+            var savingsRepo = new SavingsAccountRepository();
+            var savingsAccount = savingsRepo.GetSavingsAccountByCustomerId(customerId);
             if (savingsAccount == null)
-     {
-   return Error("You don't have a savings account to make payment from");
-    }
+            {
+                return Error("You don't have a savings account to make payment from");
+            }
 
-      // Check sufficient balance (payment amount + Rs. 1,000 minimum balance)
-    decimal currentBalance = savingsAccount.Balance ?? 0;
+            // Check sufficient balance (payment amount + Rs. 1,000 minimum balance)
+            decimal currentBalance = savingsAccount.Balance ?? 0;
             if (currentBalance - paymentAmount < 1000)
-  {
-           return Error($"Insufficient balance. You must maintain Rs. 1,000 minimum balance in savings account. Available: Rs. {(currentBalance - 1000 > 0 ? currentBalance - 1000 : 0):N2}");
+            {
+                return Error($"Insufficient balance. You must maintain Rs. 1,000 minimum balance in savings account. Available: Rs. {(currentBalance - 1000 > 0 ? currentBalance - 1000 : 0):N2}");
             }
 
             try
-    {
- // Deduct from savings account
-     decimal newSavingsBalance = currentBalance - paymentAmount;
-    bool savingsUpdated = savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
-       if (!savingsUpdated)
-    {
-   return Error("Failed to deduct payment from savings account");
+            {
+                // Deduct from savings account
+                decimal newSavingsBalance = currentBalance - paymentAmount;
+                bool savingsUpdated = savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
+                if (!savingsUpdated)
+                {
+                    return Error("Failed to deduct payment from savings account");
                 }
 
- // Record loan payment
-       var loanTransactionRepo = new LoanTransactionRepository();
-        bool paymentRecorded = loanTransactionRepo.CreateLoanTransaction(
-       loanAccountId,
-                    paymentAmount,
-         newOutstanding,
-  paymentType,
-      customerId
-    );
+                // Record loan payment
+                var loanTransactionRepo = new LoanTransactionRepository();
+                bool paymentRecorded = loanTransactionRepo.CreateLoanTransaction(
+                loanAccountId,
+                            paymentAmount,
+                 newOutstanding,
+                paymentType,
+                            customerId
+                );
 
-   if (!paymentRecorded)
-     {
-     // Rollback savings
- savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
-      return Error("Failed to record loan payment");
+                if (!paymentRecorded)
+                {
+                    // Rollback savings
+                    savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
+                    return Error("Failed to record loan payment");
                 }
 
-     // Record savings transaction
-    var savingsTransactionRepo = new SavingsTransactionRepository();
-  savingsTransactionRepo.CreateTransaction(savingsAccount.SBAccountID, "LOAN_PAYMENT", paymentAmount);
+                // Record savings transaction
+                var savingsTransactionRepo = new SavingsTransactionRepository();
+                savingsTransactionRepo.CreateTransaction(savingsAccount.SBAccountID, "LOAN_PAYMENT", paymentAmount);
 
-      // If fully paid, close the loan account
-            if (newOutstanding == 0)
-      {
-   _accountRepo.CloseAccount(loanAccountId);
-    }
+                // If fully paid, close the loan account
+                if (newOutstanding == 0)
+                {
+                    _accountRepo.CloseAccount(loanAccountId);
+                }
 
-        string message;
-       if (newOutstanding == 0)
-              {
-        message = $"Congratulations! Loan fully paid from Savings Account. Amount: Rs. {paymentAmount:N2}. Loan account closed.";
-    }
-   else
-     {
-    message = $"Payment successful from Savings Account! Amount: Rs. {paymentAmount:N2}. Remaining balance: Rs. {newOutstanding:N2}";
-         }
+                string message;
+                if (newOutstanding == 0)
+                {
+                    message = $"Congratulations! Loan fully paid from Savings Account. Amount: Rs. {paymentAmount:N2}. Loan account closed.";
+                }
+                else
+                {
+                    message = $"Payment successful from Savings Account! Amount: Rs. {paymentAmount:N2}. Remaining balance: Rs. {newOutstanding:N2}";
+                }
 
-     return Success(message, loanAccountId, newOutstanding);
-   }
-      catch (Exception ex)
-  {
-         // Attempt rollback
-     savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
+                return Success(message, loanAccountId, newOutstanding);
+            }
+            catch (Exception ex)
+            {
+                // Attempt rollback
+                savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentBalance);
                 throw new Exception($"Payment failed: {ex.Message}", ex);
-       }
-   }
+            }
+        }
 
         /// <summary>
  /// Pay EMI from Fixed Deposit Account (Foreclose FD and use maturity amount)

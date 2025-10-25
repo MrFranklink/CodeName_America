@@ -944,14 +944,28 @@ var savingsAccount = ((List<AccountDTO>)ViewBag.CustomerAccounts).FirstOrDefault
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p><strong>Account ID:</strong> <span id="modalAccountId"></span></p>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <p class="mb-0"><strong>Account ID:</strong> <span id="modalAccountId"></span></p>
+                    <!-- Export Buttons -->
+                    <div class="btn-group" id="exportButtons" style="display:none;">
+                        <button type="button" class="btn btn-sm btn-success" onclick="exportTransactions('excel')">
+                            <i class="bi bi-file-earmark-excel me-1"></i>Excel
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="exportTransactions('pdf')">
+                            <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                        </button>
+                    </div>
+                </div>
                 <div id="modalLoading" class="text-center py-5" style="display:none;">
                     <div class="spinner-border text-primary"></div>
                 </div>
                 <div id="modalError" class="alert alert-danger" style="display:none;"></div>
                 <div id="modalContent">
                     <div id="transactionList"></div>
-                    <div id="noTransactions" class="alert alert-info" style="display:none;">No transactions found.</div>
+                    <div id="noTransactions" class="alert alert-info" style="display:none;">
+                        <i class="bi bi-info-circle me-2"></i>No transactions found.
+                        <p class="mb-0 mt-2 small">Transactions will appear here after you make deposits, withdrawals, or transfers.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1001,376 +1015,124 @@ var savingsAccount = ((List<AccountDTO>)ViewBag.CustomerAccounts).FirstOrDefault
             }
         }
 
+        // Store current account ID for export
+        var currentTransactionAccountId = null;
+
         function viewTransactionHistory(accountId) {
+            // Store account ID for export function
+            currentTransactionAccountId = accountId;
+            
             var modal = new bootstrap.Modal(document.getElementById('transactionModal'));
-      modal.show();
-  document.getElementById('modalAccountId').textContent = accountId;
-      document.getElementById('modalLoading').style.display = 'block';
-      document.getElementById('modalError').style.display = 'none';
-          document.getElementById('modalContent').style.display = 'none';
+            modal.show();
+            document.getElementById('modalAccountId').textContent = accountId;
+            document.getElementById('modalLoading').style.display = 'block';
+            document.getElementById('modalError').style.display = 'none';
+            document.getElementById('modalContent').style.display = 'none';
+            document.getElementById('exportButtons').style.display = 'none';
     
-      fetch('@Url.Action("GetCustomerTransactionHistory", "Dashboard")?accountId=' + accountId)
-      .then(response => response.json())
-  .then(data => {
-       document.getElementById('modalLoading').style.display = 'none';
-                    document.getElementById('modalContent').style.display = 'block';
+            fetch('@Url.Action("GetCustomerTransactionHistory", "Dashboard")?accountId=' + accountId)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('modalLoading').style.display = 'none';
+                document.getElementById('modalContent').style.display = 'block';
                 
-  if (data.success && data.data && data.data.length > 0) {
-             document.getElementById('noTransactions').style.display = 'none';
-          var html = '';
-       data.data.forEach(function(t, index) {
- // Fix: Handle both property names and parse date correctly
-    var dateValue = t.Transactiondate || t.Transationdate;
-             var date = new Date(dateValue);
+                if (data.success && data.data && data.data.length > 0) {
+                    // Show export buttons when transactions exist
+                    document.getElementById('exportButtons').style.display = 'block';
+                    document.getElementById('noTransactions').style.display = 'none';
+                    
+                    var html = '';
+                    data.data.forEach(function(t, index) {
+                        // Fix: Handle both property names and parse date correctly
+                        var dateValue = t.Transactiondate || t.Transationdate;
+                        var date = new Date(dateValue);
   
-      // Validate date
-           if (isNaN(date.getTime())) {
-       console.error('Invalid date value:', dateValue);
-         date = new Date();  // Fallback to current date
-            }
+                        // Validate date
+                        if (isNaN(date.getTime())) {
+                            console.error('Invalid date value:', dateValue);
+                            date = new Date();  // Fallback to current date
+                        }
 
-         // Format date and time properly
-                    var formattedDate = date.toLocaleDateString('en-GB', { 
-                day: '2-digit', 
-month: 'short', 
- year: 'numeric' 
-       });
-            var formattedTime = date.toLocaleTimeString('en-GB', { 
-    hour: '2-digit', 
-    minute: '2-digit',
-        hour12: true
-    });
+                        // Format date and time properly
+                        var formattedDate = date.toLocaleDateString('en-GB', { 
+                            day: '2-digit', 
+                            month: 'short', 
+                            year: 'numeric' 
+                        });
+                        var formattedTime = date.toLocaleTimeString('en-GB', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            hour12: true
+                        });
   
-              // Determine transaction type and display name
-               var transType = t.Transactiontype.toUpperCase();
-        var displayType = t.Transactiontype;
+                        // Determine transaction type and display name
+                        var transType = t.Transactiontype.toUpperCase();
+                        var displayType = t.Transactiontype;
                
-     if (transType === 'TRANSFER_DEBIT') {
-      displayType = 'Transfer Sent';
-         } else if (transType === 'TRANSFER_CREDIT') {
-   displayType = 'Transfer Received';
-              } else if (transType === 'LOAN_PAYMENT') {
-             displayType = 'Loan EMI Payment';
-       } else if (transType === 'INITIAL DEPOSIT') {
-    displayType = 'Initial Deposit';
-       }
+                        if (transType === 'TRANSFER_DEBIT') {
+                            displayType = 'Transfer Sent';
+                        } else if (transType === 'TRANSFER_CREDIT') {
+                            displayType = 'Transfer Received';
+                        } else if (transType === 'LOAN_PAYMENT') {
+                            displayType = 'Loan EMI Payment';
+                        } else if (transType === 'INITIAL DEPOSIT') {
+                            displayType = 'Initial Deposit';
+                        } else if (transType === 'FD_MATURITY') {
+                            displayType = 'FD Maturity Credit';
+                        }
    
- // Determine if credit or debit
- var isCredit = transType.includes('DEPOSIT') || 
-   transType.includes('CREDIT');
-      var icon = isCredit ? 'arrow-down-circle text-success' : 'arrow-up-circle text-danger';
-      var sign = isCredit ? '+' : '-';
-             var amountClass = isCredit ? 'text-success' : 'text-danger';
+                        // Determine if credit or debit
+                        var isCredit = transType.includes('DEPOSIT') || transType.includes('CREDIT');
+                        var icon = isCredit ? 'arrow-down-circle text-success' : 'arrow-up-circle text-danger';
+                        var sign = isCredit ? '+' : '-';
+                        var amountClass = isCredit ? 'text-success' : 'text-danger';
            
-           // Add "Latest" badge to first transaction
-   var latestBadge = index === 0 ? '<span class="badge bg-success ms-2">Latest</span>' : '';
+                        // Add "Latest" badge to first transaction
+                        var latestBadge = index === 0 ? '<span class="badge bg-success ms-2">Latest</span>' : '';
       
-   html += `<div class="transaction-item d-flex justify-content-between align-items-center ${index === 0 ? 'newest' : ''}">
-          <div>
-            <i class="bi bi-${icon} me-2"></i>
-        <strong>${displayType}</strong> ${latestBadge}<br>
-           <small class="text-muted">${formattedDate} ${formattedTime}</small>
-             </div>
-        <div class="${amountClass} fw-bold">${sign}₹ ${parseFloat(t.Amount).toFixed(2)}</div>
-    </div>`;
-      });
-          document.getElementById('transactionList').innerHTML = html;
-        } else {
-           document.getElementById('noTransactions').style.display = 'block';
-     }
-         })
-       .catch(error => {
-          document.getElementById('modalLoading').style.display = 'none';
-    document.getElementById('modalError').textContent = 'Error: ' + error.message;
-              document.getElementById('modalError').style.display = 'block';
-   console.error('Fetch error:', error);
-             });
-        }
-
-        // FD Calculator
-        document.addEventListener('DOMContentLoaded', function() {
-            const fdAmountInput = document.getElementById('fdAmount');
-            const fdTenureSelect = document.getElementById('fdTenure');
-            const fdMaturityInput = document.getElementById('fdMaturityAmount');
-            const fdCalcDiv = document.getElementById('fdCalculation');
-
-            if (fdAmountInput && fdTenureSelect) {
-                function calculateFDMaturity() {
-                    const amount = parseFloat(fdAmountInput.value);
-                    const tenure = parseInt(fdTenureSelect.value);
-
-                    if (!amount || !tenure || amount < 10000) {
-                        fdMaturityInput.value = '';
-                        fdCalcDiv.style.display = 'none';
-                        return;
-                    }
-
-                    // Determine interest rate based on tenure
-                    let rate = 6; // Default
-                    if (tenure >= 36) rate = 8;
-                    else if (tenure >= 12) rate = 7;
-
-                    // Calculate maturity: A = P(1 + r/100)^(t/12)
-                    const years = tenure / 12;
-                    const maturity = amount * Math.pow(1 + rate / 100, years);
-
-                    fdMaturityInput.value = '₹ ' + maturity.toFixed(2);
-
-                    // Show calculation
-                    document.getElementById('fdCalcAmount').textContent = amount.toFixed(2);
-                    document.getElementById('fdCalcRate').textContent = rate;
-                    document.getElementById('fdCalcTenure').textContent = tenure;
-                    document.getElementById('fdCalcMaturity').textContent = maturity.toFixed(2);
-                    fdCalcDiv.style.display = 'block';
+                        html += `<div class="transaction-item d-flex justify-content-between align-items-center ${index === 0 ? 'newest' : ''}">
+                            <div>
+                                <i class="bi bi-${icon} me-2"></i>
+                                <strong>${displayType}</strong> ${latestBadge}<br>
+                                <small class="text-muted">${formattedDate} ${formattedTime}</small>
+                            </div>
+                            <div class="${amountClass} fw-bold">${sign}₹ ${parseFloat(t.Amount).toFixed(2)}</div>
+                        </div>`;
+                    });
+                    document.getElementById('transactionList').innerHTML = html;
+                } else {
+                    document.getElementById('noTransactions').style.display = 'block';
+                    document.getElementById('exportButtons').style.display = 'none';
                 }
-
-                fdAmountInput.addEventListener('input', calculateFDMaturity);
-                fdTenureSelect.addEventListener('change', calculateFDMaturity);
-            }
-
-            // Loan Eligibility Calculator
-         const salaryInput = document.getElementById('monthlySalary');
-   const loanAmountInput = document.getElementById('loanAmount');
-  const tenureInput = document.getElementById('tenureMonths');
-  const emiInput = document.getElementById('estimatedEmi');
-    const submitBtn = document.getElementById('loanSubmitBtn');
-
-            if (salaryInput && loanAmountInput) {
- let eligibility = null;
-
-      salaryInput.addEventListener('input', function() {
-             const salary = parseFloat(this.value);
-   
-        if (salary >= 1000) {
-   eligibility = calculateLoanEligibility(salary);
-             displayLoanEligibility(eligibility);
-        validateLoanAmount();
-    } else {
-     document.getElementById('loanEligibilityCard').style.display = 'none';
-       document.getElementById('loanValidationMessage').style.display = 'none';
-       submitBtn.disabled = true;
-     }
-                });
-
-     loanAmountInput.addEventListener('input', validateLoanAmount);
-         tenureInput.addEventListener('input', function() {
-      calculateEMI();
-         validateLoanAmount();
-    });
-
-       function calculateLoanEligibility(salary) {
-const minLoan = salary * 30;
-      const maxLoan = salary * 60;
-          const maxEmi = salary * 0.6;
-          
- let interestRate = 10;
-      if (maxLoan >= 1000000) {
-       interestRate = 9;
-        } else if (maxLoan >= 500000) {
-             interestRate = 9.5;
+            })
+            .catch(error => {
+                document.getElementById('modalLoading').style.display = 'none';
+                document.getElementById('modalError').textContent = 'Error: ' + error.message;
+                document.getElementById('modalError').style.display = 'block';
+                document.getElementById('exportButtons').style.display = 'none';
+                console.error('Fetch error:', error);
+            });
         }
 
-        return {
- minLoan: minLoan,
-    maxLoan: maxLoan,
-      maxEmi: maxEmi,
-    interestRate: interestRate,
- salary: salary
-          };
-           }
-
-      function displayLoanEligibility(eligibility) {
- const card = document.getElementById('loanEligibilityCard');
-        document.getElementById('loanRange').textContent = `₹${formatCurrency(eligibility.minLoan)} to ₹${formatCurrency(eligibility.maxLoan)}`;
- document.getElementById('interestRate').textContent = `${eligibility.interestRate}% per annum`;
-          document.getElementById('maxEmi').textContent = `₹${formatCurrency(eligibility.maxEmi)}/month`;
- card.style.display = 'block';
-          }
-
-       function validateLoanAmount() {
-            const loanAmount = parseFloat(loanAmountInput.value);
-   const msgDiv = document.getElementById('loanValidationMessage');
-
-          if (!eligibility || !loanAmount) {
-     msgDiv.style.display = 'none';
-                submitBtn.disabled = true;
-         return;
-    }
-
-         if (loanAmount < eligibility.minLoan) {
-    msgDiv.className = 'alert alert-warning';
-     msgDiv.innerHTML = `<i class="bi bi-exclamation-triangle me-2"></i>
- <strong>Low Amount:</strong> Based on salary of ₹${formatCurrency(eligibility.salary)}, 
-          minimum recommended loan is ₹${formatCurrency(eligibility.minLoan)}`;
-    msgDiv.style.display = 'block';
-submitBtn.disabled = false;
-          } else if (loanAmount > eligibility.maxLoan) {
-            msgDiv.className = 'alert alert-danger';
-         msgDiv.innerHTML = `<i class="bi bi-x-circle me-2"></i>
-     <strong>Exceeds Eligibility:</strong> Maximum loan for salary ₹${formatCurrency(eligibility.salary)} 
-            is ₹${formatCurrency(eligibility.maxLoan)}. Please reduce loan amount.`;
-      msgDiv.style.display = 'block';
-       submitBtn.disabled = true;
-        } else {
-      msgDiv.className = 'alert alert-success';
-           msgDiv.innerHTML = `<i class="bi bi-check-circle me-2"></i>
-              <strong>Eligible!</strong> Loan amount ₹${formatCurrency(loanAmount)} is within your eligibility range.`;
-     msgDiv.style.display = 'block';
-       submitBtn.disabled = false;
-          calculateEMI();
-             }
-  }
-
-         function calculateEMI() {
-                    const loanAmount = parseFloat(loanAmountInput.value);
-    const tenure = parseInt(tenureInput.value);
-
-      if (!eligibility || !loanAmount || !tenure) {
-          emiInput.value = '';
-           return;
-          }
-
-        const monthlyRate = (eligibility.interestRate / 12) / 100;
-           const emi = (loanAmount * monthlyRate * Math.pow(1 + monthlyRate, tenure)) / 
-           (Math.pow(1 + monthlyRate, tenure) - 1);
-
-        emiInput.value = '₹ ' + formatCurrency(emi);
-
-            if (emi > eligibility.maxEmi) {
-         const msgDiv = document.getElementById('loanValidationMessage');
-         msgDiv.className = 'alert alert-danger';
-      msgDiv.innerHTML = `<i class="bi bi-x-circle me-2"></i>
-      <strong>EMI Too High:</strong> EMI ₹${formatCurrency(emi)} exceeds 60% of salary 
-             (₹${formatCurrency(eligibility.maxEmi)}). Increase tenure or reduce loan amount.`;
-              submitBtn.disabled = true;
-        }
+        // Export transactions function
+        function exportTransactions(format) {
+            if (!currentTransactionAccountId) {
+                alert('No account selected for export');
+                return;
             }
-
-      function formatCurrency(amount) {
-     return new Intl.NumberFormat('en-IN', {
-                maximumFractionDigits: 0
-       }).format(amount);
-     }
-   }
-
-            // ===== PAY EMI - PAYMENT TYPE HANDLER =====
-            // Handle dynamic changes for Payment Type dropdown (Regular EMI / Part Payment / Full Closure)
-        document.querySelectorAll('select[name="paymentType"]').forEach(function(select) {
-           const form = select.closest('form');
-    const amountInput = form.querySelector('input[name="paymentAmount"]');
-       const loanAccountId = form.querySelector('input[name="loanAccountId"]').value;
-          
-         // Get EMI amount from the card
-      const card = select.closest('.card');
-   const loanInfo = card.querySelector('.small').textContent;
-     
-         // Extract EMI amount
-      const emiMatch = loanInfo.match(/EMI:\s*₹\s*([\d,]+\.?\d*)/);
-            const emiAmount = emiMatch ? parseFloat(emiMatch[1].replace(/,/g, '')) : 0;
-         
-     // Store original EMI
-          if (!amountInput.dataset.emiAmount) {
-         amountInput.dataset.emiAmount = emiAmount;
-       }
-  
-  select.addEventListener('change', function() {
-     const paymentType = this.value;
-        
-      if (paymentType === 'EMI') {
-        // Regular EMI: Fixed amount, read-only
-  amountInput.value = parseFloat(amountInput.dataset.emiAmount);
-  amountInput.readOnly = true;
- amountInput.min = amountInput.dataset.emiAmount;
- amountInput.classList.add('bg-light');
-  
-    } else if (paymentType === 'PART_PAYMENT') {
-   // Part Payment: User can enter amount >= EMI
-   amountInput.value = parseFloat(amountInput.dataset.emiAmount);
-            amountInput.readOnly = false;
-      amountInput.min = amountInput.dataset.emiAmount;
-     amountInput.classList.remove('bg-light');
-   amountInput.focus();
-     
-  } else if (paymentType === 'FULL_CLOSURE') {
-       // Full Closure: Fetch outstanding amount
-       amountInput.readOnly = true;
-   amountInput.classList.add('bg-light');
-         amountInput.value = 'Loading...';
-      
-         // Fetch outstanding from server
-     fetch('@Url.Action("GetLoanOutstanding", "Dashboard")?loanAccountId=' + loanAccountId)
-       .then(response => response.json())
-        .then(data => {
-        if (data.success && data.outstanding > 0) {
-     amountInput.value = data.outstanding.toFixed(2);
-              amountInput.min = data.outstanding;
-          amountInput.dataset.outstanding = data.outstanding;
-        } else {
- amountInput.value = parseFloat(amountInput.dataset.emiAmount);
-         console.warn('Could not fetch outstanding amount, using EMI');
-   }
-       })
-          .catch(error => {
-     console.error('Error fetching outstanding:', error);
-     amountInput.value = parseFloat(amountInput.dataset.emiAmount);
-   alert('Could not fetch outstanding amount. Please try again.');
-      });
-       }
-        });
- 
-   // Trigger change on load to set initial state
-select.dispatchEvent(new Event('change'));
-     });
-
- // ===== LOAD LOAN OUTSTANDING FOR ACCOUNT CARDS =====
-  // Fetch and display outstanding balance for each active loan
-      document.querySelectorAll('[class*="loan-outstanding-"]').forEach(function(element) {
-         const loanId = element.dataset.loanId;
-       if (!loanId) return;
-           
-   // Fetch outstanding balance
-          fetch('@Url.Action("GetLoanOutstanding", "Dashboard")?loanAccountId=' + loanId)
-      .then(response => response.json())
-        .then(data => {
-             if (data.success && data.outstanding >= 0) {
- const outstanding = data.outstanding;
-             
-      // Update outstanding display
-       element.innerHTML = '₹' + outstanding.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-          
-        // Calculate progress (need to get original loan amount from card)
-   const loanCard = element.closest('.card-body');
-           const loanInfo = loanCard.querySelector('.small').textContent;
-           const loanMatch = loanInfo.match(/Loan:\s*₹\s*([\d,]+\.?\d*)/);
-
-    if (loanMatch) {
-  const originalLoan = parseFloat(loanMatch[1].replace(/,/g, ''));
-        const paidAmount = originalLoan - outstanding;
-     const progressPercent = (paidAmount / originalLoan) * 100;
-   
-      // Update progress bar
-     const progressBar = document.querySelector('.loan-progress-' + loanId);
- if (progressBar) {
-     progressBar.style.width = progressPercent + '%';
-       }
-         
-       // Update paid text
-       const paidText = document.querySelector('.loan-paid-' + loanId);
-          if (paidText) {
-     paidText.textContent = progressPercent.toFixed(1) + '% paid | ₹' + 
-   paidAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' of ₹' +
-           originalLoan.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-   }
- }
-   } else {
-  element.innerHTML = '<span class="text-danger small">Error loading</span>';
-}
-     })
-  .catch(error => {
-      console.error('Error fetching loan outstanding:', error);
-      element.innerHTML = '<span class="text-danger small">Error</span>';
-      });
-        });
-});
+            
+            // Open export URL in new window/tab
+            var url = '@Url.Action("ExportTransactions", "Dashboard")' + 
+                      '?accountId=' + currentTransactionAccountId + 
+                      '&format=' + format;
+            
+            if (format === 'pdf') {
+                // PDF opens in new tab for printing
+                window.open(url, '_blank');
+            } else {
+                // Excel downloads directly
+                window.location.href = url;
+            }
+        }
     </script>
 }

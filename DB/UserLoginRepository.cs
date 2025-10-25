@@ -93,6 +93,59 @@ namespace DB
             }
         }
 
+        /// <summary>
+        /// Delete user login by UserID
+        /// </summary>
+        /// <param name="userId">UserID to delete</param>
+        /// <returns>True if deleted successfully</returns>
+        public bool DeleteUser(string userId)
+        {
+            try
+            {
+                using (var context = new Banking_DetailsEntities())
+                {
+                    var user = context.UserLogins.FirstOrDefault(u => u.UserID == userId);
+                    if (user == null)
+                        return false;
+
+                    context.UserLogins.Remove(user);
+                    context.SaveChanges();
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Delete user login by ReferenceID (Customer ID, Employee ID, or Manager ID)
+        /// This is used when deleting a customer, employee, or manager
+        /// </summary>
+        /// <param name="referenceId">ReferenceID (e.g., MLA00001, 2600001, MGR001)</param>
+        /// <returns>True if deleted successfully</returns>
+        public bool DeleteUserByReferenceId(string referenceId)
+        {
+            try
+            {
+                using (var context = new Banking_DetailsEntities())
+                {
+                    var user = context.UserLogins.FirstOrDefault(u => u.ReferenceID == referenceId);
+                    if (user == null)
+                        return false; // No login found for this reference ID
+
+                    context.UserLogins.Remove(user);
+                    context.SaveChanges();
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool TestConnection()
         {
             try

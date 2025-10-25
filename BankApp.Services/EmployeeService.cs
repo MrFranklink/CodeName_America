@@ -142,6 +142,61 @@ namespace BankApp.Services
             return _employeeRepo.GetEmployeeCount();
         }
 
+        /// <summary>
+        /// Update employee information (Name, Department)
+        /// PAN cannot be changed
+        /// </summary>
+        public OperationResult UpdateEmployee(string empId, string empName, string deptId)
+        {
+            // Clean and normalize inputs
+            empName = empName?.Trim();
+            deptId = deptId?.Trim().ToUpper();
+
+            var validationRules = new List<Func<OperationResult>>
+            {
+                // Employee ID validation
+                () => string.IsNullOrWhiteSpace(empId) ? Error("Employee ID is required") : null,
+                
+                // Employee Name validations
+                () => string.IsNullOrWhiteSpace(empName) ? Error("Employee Name is required") : null,
+                () => empName.Length < 3 ? Error("Employee Name must be at least 3 characters long") : null,
+                () => empName.Length > 50 ? Error("Employee Name cannot exceed 50 characters") : null,
+                () => !System.Text.RegularExpressions.Regex.IsMatch(empName, @"^[a-zA-Z\s.]+$") 
+                    ? Error("Employee Name can only contain letters, spaces, and dots (.)") : null,
+                
+                // Department validations
+                () => string.IsNullOrWhiteSpace(deptId) ? Error("Department ID is required") : null,
+                () => !new[] { "DEPT01", "DEPT02", "DEPT03" }.Contains(deptId) 
+                    ? Error("Department ID must be DEPT01, DEPT02, or DEPT03") : null
+            };
+
+            var validationError = validationRules.Select(rule => rule()).FirstOrDefault(result => result != null);
+            if (validationError != null) return validationError;
+
+            try
+            {
+                // Check if employee exists
+                if (!_employeeRepo.EmployeeExists(empId))
+                {
+                    return Error($"Employee with ID {empId} not found");
+                }
+
+                // Update employee
+                bool updated = _employeeRepo.UpdateEmployee(empId, empName, deptId);
+                
+                if (!updated)
+                {
+                    return Error("Failed to update employee information. Please try again.");
+                }
+
+                return Success($"Employee information updated successfully! Department: {deptId}", empId, null, null);
+            }
+            catch (Exception ex)
+            {
+                return Error($"Update failed: {ex.Message}");
+            }
+        }
+
         private OperationResult Error(string message)
         {
             return new OperationResult

@@ -17,9 +17,9 @@ namespace DB
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2214:DoNotCallOverridableMethodsInConstructors")]
         public SavingsAccount()
         {
-            this.SavingsTransactions = new HashSet<SavingsTransaction>();
             this.FundTransfers = new HashSet<FundTransfer>();
             this.FundTransfers1 = new HashSet<FundTransfer>();
+            this.SavingsTransactions = new HashSet<SavingsTransaction>();
         }
     
         public string SBAccountID { get; set; }
@@ -29,10 +29,10 @@ namespace DB
         public virtual Account Account { get; set; }
         public virtual Customer Customer { get; set; }
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
-        public virtual ICollection<SavingsTransaction> SavingsTransactions { get; set; }
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<FundTransfer> FundTransfers { get; set; }
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<FundTransfer> FundTransfers1 { get; set; }
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
+        public virtual ICollection<SavingsTransaction> SavingsTransactions { get; set; }
     }
 }

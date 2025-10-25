@@ -102,7 +102,9 @@ namespace Bank_App.Controllers
                 
                 // Add account count statistic
                 ViewBag.AccountCount = _accountService.GetTotalAccountCount();
-                ViewBag.TransactionCount = 0; // Employees don't need this stat currently
+                
+                // Get today's transaction count from SavingsTransaction table
+                ViewBag.TransactionCount = _transactionService.GetTodayTransactionCount();
             }
 
             // For customer, load their personal data
@@ -570,13 +572,16 @@ namespace Bank_App.Controllers
         [HttpPost]
         public ActionResult DeleteEmployee(string empId)
         {
-            if (Session["Role"]?.ToString().ToUpper() != "MANAGER")
-            {
-                return RedirectToAction("Login", "Auth");
-            }
-
             try
             {
+                string role = Session["Role"]?.ToString().ToUpper();
+                
+                if (role != "MANAGER")
+                {
+                    TempData["ErrorMessage"] = "Only managers can delete employees";
+                    return RedirectToAction("Index");
+                }
+
                 var result = _managerService.DeleteEmployee(empId);
 
                 if (result.IsSuccess)
@@ -590,7 +595,75 @@ namespace Bank_App.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = "Failed to delete employee: " + ex.Message;
+                TempData["ErrorMessage"] = "Deletion failed: " + ex.Message;
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        // POST: Dashboard/UpdateCustomer
+        [HttpPost]
+        public ActionResult UpdateCustomer(string custId, string custName, string address, string phoneNumber)
+        {
+            try
+            {
+                string role = Session["Role"]?.ToString().ToUpper();
+                
+                // Both Manager and Employee can update customers
+                if (role != "MANAGER" && role != "EMPLOYEE")
+                {
+                    TempData["ErrorMessage"] = "Access denied. Only managers and employees can update customer profiles.";
+                    return RedirectToAction("Index");
+                }
+
+                var result = _customerService.UpdateCustomer(custId, custName, address, phoneNumber);
+
+                if (result.IsSuccess)
+                {
+                    TempData["SuccessMessage"] = result.Message;
+                }
+                else
+                {
+                    TempData["ErrorMessage"] = result.Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = "Update failed: " + ex.Message;
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        // POST: Dashboard/UpdateEmployee
+        [HttpPost]
+        public ActionResult UpdateEmployee(string empId, string empName, string deptId)
+        {
+            try
+            {
+                string role = Session["Role"]?.ToString().ToUpper();
+                
+                // Only Manager can update employees
+                if (role != "MANAGER")
+                {
+                    TempData["ErrorMessage"] = "Access denied. Only managers can update employee information.";
+                    return RedirectToAction("Index");
+                }
+
+                var result = _employeeService.UpdateEmployee(empId, empName, deptId);
+
+                if (result.IsSuccess)
+                {
+                    TempData["SuccessMessage"] = result.Message;
+                }
+                else
+                {
+                    TempData["ErrorMessage"] = result.Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = "Update failed: " + ex.Message;
             }
 
             return RedirectToAction("Index");
@@ -1065,7 +1138,7 @@ namespace Bank_App.Controllers
 
             try
             {
-                // Customer self-application - use customer ID as opener
+               
                 var result = _fdService.OpenFixedDepositAccount(customerId, amount, startDate, tenureMonths, customerId, "CUSTOMER");
 
                 if (result.IsSuccess)
@@ -1089,7 +1162,7 @@ namespace Bank_App.Controllers
         [HttpPost]
         public ActionResult ApplyForLoan(decimal loanAmount, DateTime startDate, int tenureMonths, decimal monthlySalary)
         {
-            // Only customers can apply
+            
             if (Session["Role"]?.ToString().ToUpper() != "CUSTOMER")
             {
                 TempData["ErrorMessage"] = "Only customers can apply for loans.";
@@ -1100,7 +1173,7 @@ namespace Bank_App.Controllers
 
             try
             {
-                // Customer self-application - use customer ID as opener
+             
                 var result = _loanService.OpenLoanAccount(customerId, loanAmount, startDate, tenureMonths, monthlySalary, customerId, "CUSTOMER");
 
                 if (result.IsSuccess)
@@ -1152,5 +1225,244 @@ namespace Bank_App.Controllers
       return Json(new { success = false, message = ex.Message }, JsonRequestBehavior.AllowGet);
      }
      }
+
+        // GET: Dashboard/ExportTransactions - Export customer transactions to Excel/PDF
+        [HttpGet]
+        public ActionResult ExportTransactions(string accountId, string format)
+        {
+            // Check if user is customer
+            string role = Session["Role"]?.ToString().ToUpper();
+            if (role != "CUSTOMER")
+            {
+                return RedirectToAction("Login", "Auth");
+            }
+
+            // Verify customer owns this account
+            string customerId = Session["ReferenceID"]?.ToString();
+            var account = _accountService.GetAccountById(accountId);
+            
+            if (account == null || account.CustomerID != customerId)
+            {
+                TempData["ErrorMessage"] = "Unauthorized access";
+                return RedirectToAction("Index");
+            }
+
+            try
+            {
+                // Get transactions
+                var transactions = _transactionService.GetTransactionHistory(accountId);
+                var customerProfile = _accountService.GetCustomerProfile(customerId);
+
+                if (format?.ToLower() == "excel")
+                {
+                    // Export as Excel (HTML table that Excel can open)
+                    var html = GenerateTransactionExcelHtml(transactions, account, customerProfile);
+                    return File(
+                        System.Text.Encoding.UTF8.GetBytes(html),
+                        "application/vnd.ms-excel",
+                        $"Transactions_{accountId}_{DateTime.Now:yyyyMMdd}.xls"
+                    );
+                }
+                else // PDF (HTML for printing)
+                {
+                    // Export as printable HTML (user can save as PDF)
+                    var html = GenerateTransactionPdfHtml(transactions, account, customerProfile);
+                    return Content(html, "text/html");
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = "Export failed: " + ex.Message;
+                return RedirectToAction("Index");
+            }
+        }
+
+        private string GenerateTransactionExcelHtml(List<SavingsTransactionDTO> transactions, AccountDTO account, CustomerProfileDTO customer)
+        {
+            var sb = new System.Text.StringBuilder();
+            
+            sb.Append("<html xmlns:x=\"urn:schemas-microsoft-com:office:excel\">");
+            sb.Append("<head>");
+            sb.Append("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+            sb.Append("<style>");
+            sb.Append("table { border-collapse: collapse; width: 100%; }");
+            sb.Append("th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }");
+            sb.Append("th { background-color: #4CAF50; color: white; }");
+            sb.Append(".header { background-color: #f2f2f2; padding: 20px; margin-bottom: 20px; }");
+            sb.Append(".credit { color: green; font-weight: bold; }");
+            sb.Append(".debit { color: red; font-weight: bold; }");
+            sb.Append("</style>");
+            sb.Append("</head>");
+            sb.Append("<body>");
+            
+            // Header
+            sb.Append("<div class='header'>");
+            sb.Append("<h2>Gen Bank - Transaction Statement</h2>");
+            sb.Append($"<p><strong>Customer Name:</strong> {customer.Custname}</p>");
+            sb.Append($"<p><strong>Customer ID:</strong> {customer.Custid}</p>");
+            sb.Append($"<p><strong>Account ID:</strong> {account.AccountID}</p>");
+            sb.Append($"<p><strong>Account Type:</strong> Savings Account</p>");
+            sb.Append($"<p><strong>Generated On:</strong> {DateTime.Now:dd MMM yyyy HH:mm}</p>");
+            sb.Append("</div>");
+            
+            // Table
+            sb.Append("<table>");
+            sb.Append("<tr>");
+            sb.Append("<th>Date & Time</th>");
+            sb.Append("<th>Transaction Type</th>");
+            sb.Append("<th>Debit (₹)</th>");
+            sb.Append("<th>Credit (₹)</th>");
+            sb.Append("<th>Amount (₹)</th>");
+            sb.Append("</tr>");
+            
+            decimal runningBalance = 0;
+            foreach (var txn in transactions.OrderBy(t => t.Transationdate))
+            {
+                var transType = txn.Transactiontype?.ToUpper() ?? "";
+                var isCredit = transType.Contains("DEPOSIT") || transType.Contains("CREDIT");
+                var amount = txn.Amount ?? 0;
+                
+                if (isCredit)
+                {
+                    runningBalance += amount;
+                }
+                else
+                {
+                    runningBalance -= amount;
+                }
+                
+                var displayType = transType;
+                if (transType == "TRANSFER_DEBIT") displayType = "Transfer Sent";
+                else if (transType == "TRANSFER_CREDIT") displayType = "Transfer Received";
+                else if (transType == "LOAN_PAYMENT") displayType = "Loan EMI Payment";
+                else if (transType == "INITIAL DEPOSIT") displayType = "Initial Deposit";
+                
+                sb.Append("<tr>");
+                sb.Append($"<td>{txn.Transationdate:dd MMM yyyy HH:mm}</td>");
+                sb.Append($"<td>{displayType}</td>");
+                sb.Append($"<td class='debit'>{(isCredit ? "" : amount.ToString("N2"))}</td>");
+                sb.Append($"<td class='credit'>{(isCredit ? amount.ToString("N2") : "")}</td>");
+                sb.Append($"<td>{runningBalance.ToString("N2")}</td>");
+                sb.Append("</tr>");
+            }
+            
+            sb.Append("</table>");
+            sb.Append("<br/>");
+            sb.Append($"<p><strong>Total Transactions:</strong> {transactions.Count}</p>");
+            sb.Append("<p><em>This is a computer-generated statement and does not require a signature.</em></p>");
+            sb.Append("</body>");
+            sb.Append("</html>");
+            
+            return sb.ToString();
+        }
+
+        private string GenerateTransactionPdfHtml(List<SavingsTransactionDTO> transactions, AccountDTO account, CustomerProfileDTO customer)
+        {
+            var sb = new System.Text.StringBuilder();
+            
+            sb.Append("<!DOCTYPE html>");
+            sb.Append("<html>");
+            sb.Append("<head>");
+            sb.Append("<title>Transaction Statement</title>");
+            sb.Append("<style>");
+            sb.Append("@media print { .no-print { display: none; } }");
+            sb.Append("body { font-family: Arial, sans-serif; margin: 20px; }");
+            sb.Append("table { border-collapse: collapse; width: 100%; margin-top: 20px; }");
+            sb.Append("th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }");
+            sb.Append("th { background-color: #28a745; color: white; }");
+            sb.Append(".header { background-color: #f8f9fa; padding: 20px; border: 2px solid #28a745; margin-bottom: 20px; }");
+            sb.Append(".credit { color: #28a745; font-weight: bold; }");
+            sb.Append(".debit { color: #dc3545; font-weight: bold; }");
+            sb.Append(".footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; }");
+            sb.Append("</style>");
+            sb.Append("</head>");
+            sb.Append("<body>");
+            
+            // Print button
+            sb.Append("<div class='no-print' style='text-align: right; margin-bottom: 10px;'>");
+            sb.Append("<button onclick='window.print()' style='padding: 10px 20px; background-color: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;'>📄 Save as PDF / Print</button>");
+            sb.Append("</div>");
+            
+            // Header
+            sb.Append("<div class='header'>");
+            sb.Append("<h1 style='color: #28a745; margin: 0;'>🏦 Gen Bank</h1>");
+            sb.Append("<h2 style='margin: 10px 0;'>Transaction Statement</h2>");
+            sb.Append("<table style='border: none; width: 100%;'>");
+            sb.Append("<tr style='border: none;'>");
+            sb.Append("<td style='border: none;'><strong>Customer Name:</strong></td>");
+            sb.Append($"<td style='border: none;'>{customer.Custname}</td>");
+            sb.Append("<td style='border: none;'><strong>Account ID:</strong></td>");
+            sb.Append($"<td style='border: none;'>{account.AccountID}</td>");
+            sb.Append("</tr>");
+            sb.Append("<tr style='border: none;'>");
+            sb.Append("<td style='border: none;'><strong>Customer ID:</strong></td>");
+            sb.Append($"<td style='border: none;'>{customer.Custid}</td>");
+            sb.Append("<td style='border: none;'><strong>Generated On:</strong></td>");
+            sb.Append($"<td style='border: none;'>{DateTime.Now:dd MMM yyyy HH:mm}</td>");
+            sb.Append("</tr>");
+            sb.Append("</table>");
+            sb.Append("</div>");
+            
+            // Transactions table
+            sb.Append("<table>");
+            sb.Append("<thead>");
+            sb.Append("<tr>");
+            sb.Append("<th style='width: 20%;'>Date & Time</th>");
+            sb.Append("<th style='width: 30%;'>Transaction Type</th>");
+            sb.Append("<th style='width: 15%; text-align: right;'>Debit (₹)</th>");
+            sb.Append("<th style='width: 15%; text-align: right;'>Credit (₹)</th>");
+            sb.Append("<th style='width: 20%; text-align: right;'>Balance (₹)</th>");
+            sb.Append("</tr>");
+            sb.Append("</thead>");
+            sb.Append("<tbody>");
+            
+            decimal runningBalance = 0;
+            foreach (var txn in transactions.OrderBy(t => t.Transationdate))
+            {
+                var transType = txn.Transactiontype?.ToUpper() ?? "";
+                var isCredit = transType.Contains("DEPOSIT") || transType.Contains("CREDIT");
+                var amount = txn.Amount ?? 0;
+                
+                if (isCredit)
+                {
+                    runningBalance += amount;
+                }
+                else
+                {
+                    runningBalance -= amount;
+                }
+                
+                var displayType = transType;
+                if (transType == "TRANSFER_DEBIT") displayType = "Transfer Sent";
+                else if (transType == "TRANSFER_CREDIT") displayType = "Transfer Received";
+                else if (transType == "LOAN_PAYMENT") displayType = "Loan EMI Payment";
+                else if (transType == "FD_MATURITY") displayType = "FD Maturity Credit";
+                else if (transType == "INITIAL DEPOSIT") displayType = "Initial Deposit";
+                
+                sb.Append("<tr>");
+                sb.Append($"<td>{txn.Transationdate:dd MMM yyyy HH:mm}</td>");
+                sb.Append($"<td>{displayType}</td>");
+                sb.Append($"<td class='debit' style='text-align: right;'>{(isCredit ? "-" : amount.ToString("N2"))}</td>");
+                sb.Append($"<td class='credit' style='text-align: right;'>{(isCredit ? amount.ToString("N2") : "-")}</td>");
+                sb.Append($"<td style='text-align: right; font-weight: bold;'>{runningBalance.ToString("N2")}</td>");
+                sb.Append("</tr>");
+            }
+            
+            sb.Append("</tbody>");
+            sb.Append("</table>");
+            
+            // Footer
+            sb.Append("<div class='footer'>");
+            sb.Append($"<p><strong>Total Transactions:</strong> {transactions.Count}</p>");
+            sb.Append($"<p><strong>Statement Period:</strong> {transactions.OrderBy(t => t.Transationdate).FirstOrDefault()?.Transationdate:dd MMM yyyy} to {transactions.OrderByDescending(t => t.Transationdate).FirstOrDefault()?.Transationdate:dd MMM yyyy}</p>");
+            sb.Append("<p style='margin-top: 20px;'><em>This is a computer-generated statement and does not require a signature.</em></p>");
+            sb.Append("<p><em>For any queries, please contact: 1800-XXX-XXXX or support@genbank.com</em></p>");
+            sb.Append("</div>");
+            
+            sb.Append("</body>");
+            sb.Append("</html>");
+            
+            return sb.ToString();
+        }
     }
 }

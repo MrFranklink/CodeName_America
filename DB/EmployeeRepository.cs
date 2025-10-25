@@ -165,5 +165,35 @@ namespace DB
                 return null;
             }
         }
+
+        /// <summary>
+        /// Update employee information
+        /// </summary>
+        public bool UpdateEmployee(string empId, string empName, string deptId)
+        {
+            try
+            {
+                using (var context = new Banking_DetailsEntities())
+                {
+                    var employee = context.Employees.Find(empId);
+                    if (employee == null)
+                    {
+                        return false;
+                    }
+
+                    // Update editable fields (PAN cannot be changed)
+                    employee.EmployeeName = empName;
+                    employee.DeptId = deptId;
+
+                    context.SaveChanges();
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ERROR in UpdateEmployee: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

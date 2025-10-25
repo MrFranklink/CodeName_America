@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DB;
 
 namespace BankApp.Services
@@ -265,6 +266,14 @@ namespace BankApp.Services
                 TransactionCount = _transactionRepo.GetTransactionCount(sbAccountId),
                 LastTransactionDate = _transactionRepo.GetLastTransactionDate(sbAccountId)
             };
+        }
+
+        /// <summary>
+        /// Get count of transactions made today (for dashboard statistics)
+        /// </summary>
+        public int GetTodayTransactionCount()
+        {
+            return _transactionRepo.GetTodayTransactionCount();
         }
 
         private TransactionResult Error(string message)

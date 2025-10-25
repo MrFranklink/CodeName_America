@@ -31,12 +31,12 @@ namespace DB
         public virtual DbSet<Employee> Employees { get; set; }
         public virtual DbSet<FDTransaction> FDTransactions { get; set; }
         public virtual DbSet<FixedDepositAccount> FixedDepositAccounts { get; set; }
+        public virtual DbSet<FundTransfer> FundTransfers { get; set; }
         public virtual DbSet<LoanAccount> LoanAccounts { get; set; }
         public virtual DbSet<LoanTransaction> LoanTransactions { get; set; }
         public virtual DbSet<Manager> Managers { get; set; }
         public virtual DbSet<SavingsAccount> SavingsAccounts { get; set; }
         public virtual DbSet<SavingsTransaction> SavingsTransactions { get; set; }
         public virtual DbSet<UserLogin> UserLogins { get; set; }
-        public virtual DbSet<FundTransfer> FundTransfers { get; set; }
     }
 }

@@ -11,21 +11,23 @@ namespace BankApp.Services
         private readonly FixedDepositAccountRepository _fdRepo;
         private readonly AccountRepository _accountRepo;
         private readonly CustomerRepository _customerRepo;
-        private readonly SavingsAccountRepository _savingsRepo; // Added repository for Savings Account
+        private readonly SavingsAccountRepository _savingsRepo;
+        private readonly FDTransactionRepository _fdTransactionRepo;  // NEW
 
         public FixedDepositAccountService()
         {
             _fdRepo = new FixedDepositAccountRepository();
             _accountRepo = new AccountRepository();
             _customerRepo = new CustomerRepository();
-            _savingsRepo = new SavingsAccountRepository(); // Initialize the Savings Account repository
+            _savingsRepo = new SavingsAccountRepository();
+            _fdTransactionRepo = new FDTransactionRepository();  // NEW
         }
 
         /// <summary>
         /// Open a new Fixed Deposit Account with business rule validation
         /// Business Rules:
         /// - Minimum deposit: Rs. 10,000
-        /// - Interest rates: 6% (?1 year), 7% (1-2 years), 8% (>2 years)
+        /// - Interest rates: 6% (<1 year), 7% (1-2 years), 8% (>2 years)
         /// - Senior citizens get +0.5% extra interest
         /// </summary>
         public AccountOperationResult OpenFixedDepositAccount(string customerId, decimal amount, DateTime startDate, int tenureMonths, string openedBy, string openedByRole)
@@ -43,6 +45,9 @@ namespace BankApp.Services
 
             var validationError = validationRules.Select(rule => rule()).FirstOrDefault(result => result != null);
             if (validationError != null) return validationError;
+
+            // Generate FD Account ID
+            string fdAccountId = IdGenerator.GenerateFixedDepositAccountId();
 
             try
             {
@@ -67,9 +72,6 @@ namespace BankApp.Services
                 double years = tenureMonths / 12.0;
                 decimal maturityAmount = amount * (decimal)Math.Pow((double)(1 + interestRate / 100), years);
 
-                // Generate FD Account ID
-                string fdAccountId = IdGenerator.GenerateFixedDepositAccountId();
-
                 // Create master account entry with PENDING status (requires manager approval)
                 bool accountCreated = _accountRepo.CreateAccountWithStatus(
                     fdAccountId, 
@@ -89,7 +91,19 @@ namespace BankApp.Services
                 bool fdCreated = _fdRepo.CreateFixedDepositAccount(fdAccountId, customerId, amount, startDate, endDate, interestRate, maturityAmount);
                 if (!fdCreated)
                 {
+                    // ROLLBACK: Delete the Account entry
+                    RollbackAccountCreation(fdAccountId);
                     return Error("Failed to create fixed deposit account");
+                }
+
+                // ============================================================
+                // NEW: Record FD creation in FDTransaction table
+                // ============================================================
+                bool transactionRecorded = _fdTransactionRepo.CreateFDTransaction(fdAccountId, "DEPOSIT", amount);
+                if (!transactionRecorded)
+                {
+                    System.Diagnostics.Debug.WriteLine($"WARNING: FD created but transaction not recorded for {fdAccountId}");
+                    // Don't rollback - FD is created, just transaction logging failed
                 }
 
                 string seniorCitizenBonus = isSeniorCitizen ? " (includes +0.5% senior citizen bonus)" : "";
@@ -104,6 +118,7 @@ namespace BankApp.Services
             }
             catch (Exception ex)
             {
+                RollbackAccountCreation(fdAccountId);
                 return Error($"Failed to open fixed deposit: {ex.Message}");
             }
         }
@@ -159,13 +174,6 @@ namespace BankApp.Services
                     return Error("Fixed Deposit Account not found");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"FD Customer ID: {fdAccount.CustomerID}");
-                System.Diagnostics.Debug.WriteLine($"FD Amount: {fdAccount.Amount}");
-                System.Diagnostics.Debug.WriteLine($"FD MaturityAmount: {fdAccount.MaturityAmount}");
-                System.Diagnostics.Debug.WriteLine($"FD Interest Rate: {fdAccount.FD_ROI}");
-                System.Diagnostics.Debug.WriteLine($"FD Start Date: {fdAccount.StartDate}");
-                System.Diagnostics.Debug.WriteLine($"FD End Date: {fdAccount.EndDate}");
-
                 // Get customer's savings account
                 var savingsAccount = _savingsRepo.GetSavingsAccountByCustomerId(fdAccount.CustomerID);
                 if (savingsAccount == null)
@@ -174,34 +182,22 @@ namespace BankApp.Services
                     return Error("Customer's savings account not found. Cannot transfer FD amount.");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"Savings Account ID: {savingsAccount.SBAccountID}");
-                System.Diagnostics.Debug.WriteLine($"Current Savings Balance: {savingsAccount.Balance}");
-
                 decimal fdMaturityAmount = fdAccount.MaturityAmount ?? 0;
  
-                // ?? EMERGENCY FIX: If MaturityAmount is NULL or 0, calculate it now
+                // Emergency fix: If MaturityAmount is NULL or 0, calculate it now
                 if (fdMaturityAmount == 0 && fdAccount.Amount.HasValue && fdAccount.Amount > 0)
                 {
                     System.Diagnostics.Debug.WriteLine("?? WARNING: MaturityAmount is NULL/0. Calculating now...");
-      
-                    // Calculate maturity using compound interest formula
                     decimal principal = fdAccount.Amount.Value;
                     decimal rate = fdAccount.FD_ROI;
-                    double tenureMonths = (fdAccount.EndDate - fdAccount.StartDate).Days / 30.44; // Average days per month
+                    double tenureMonths = (fdAccount.EndDate - fdAccount.StartDate).Days / 30.44;
                     double years = tenureMonths / 12.0;
-      
                     fdMaturityAmount = principal * (decimal)Math.Pow((double)(1 + rate / 100), years);
-  
                     System.Diagnostics.Debug.WriteLine($"? Calculated MaturityAmount: {fdMaturityAmount:N2}");
-                    System.Diagnostics.Debug.WriteLine($"   Principal: {principal:N2}, Rate: {rate}%, Years: {years:F2}");
                 }
-    
-                System.Diagnostics.Debug.WriteLine($"FD Maturity Amount to Transfer: {fdMaturityAmount:N2}");
 
                 decimal currentSavingsBalance = savingsAccount.Balance ?? 0;
                 decimal newSavingsBalance = currentSavingsBalance + fdMaturityAmount;
-
-                System.Diagnostics.Debug.WriteLine($"New Savings Balance: {newSavingsBalance:N2}");
 
                 // Transfer FD maturity amount to savings account
                 bool savingsUpdated = _savingsRepo.UpdateBalance(savingsAccount.SBAccountID, newSavingsBalance);
@@ -215,17 +211,31 @@ namespace BankApp.Services
 
                 // Record transaction in savings account
                 var transactionRepo = new SavingsTransactionRepository();
-                bool transactionRecorded = transactionRepo.CreateTransaction(savingsAccount.SBAccountID, "FD_MATURITY", fdMaturityAmount);
+                bool savingsTransactionRecorded = transactionRepo.CreateTransaction(savingsAccount.SBAccountID, "FD_MATURITY", fdMaturityAmount);
                
-                if (!transactionRecorded)
+                if (!savingsTransactionRecorded)
                 {
-                    System.Diagnostics.Debug.WriteLine("ERROR: Failed to record transaction");
+                    System.Diagnostics.Debug.WriteLine("ERROR: Failed to record savings transaction");
                     // Rollback savings balance
                     _savingsRepo.UpdateBalance(savingsAccount.SBAccountID, currentSavingsBalance);
                     return Error("Failed to record FD maturity transaction");
                 }
 
-                System.Diagnostics.Debug.WriteLine("? Transaction recorded");
+                System.Diagnostics.Debug.WriteLine("? Savings transaction recorded");
+
+                // ============================================================
+                // NEW: Record FD foreclose transaction in FDTransaction table
+                // ============================================================
+                bool fdTransactionRecorded = _fdTransactionRepo.CreateFDTransaction(fdAccountId, "FORECLOSE", fdMaturityAmount);
+                if (!fdTransactionRecorded)
+                {
+                    System.Diagnostics.Debug.WriteLine("WARNING: FD foreclosed but FDTransaction not recorded");
+                    // Don't rollback - FD is foreclosed, just transaction logging failed
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("? FD transaction recorded");
+                }
 
                 // Close FD account in master Account table
                 bool closed = _accountRepo.CloseAccount(fdAccountId);
@@ -261,6 +271,39 @@ namespace BankApp.Services
         public FixedDepositAccount GetAccountDetails(string fdAccountId)
         {
             return _fdRepo.GetFDAccountById(fdAccountId);
+        }
+
+        /// <summary>
+        /// Get FD transaction history
+        /// </summary>
+        public List<FDTransaction> GetFDTransactionHistory(string fdAccountId)
+        {
+            return _fdTransactionRepo.GetFDTransactionsByAccountId(fdAccountId);
+        }
+
+        /// <summary>
+        /// Rollback account creation if FD account creation fails
+        /// </summary>
+        private void RollbackAccountCreation(string fdAccountId)
+        {
+            System.Diagnostics.Debug.WriteLine($"Attempting rollback of Account entry {fdAccountId}");
+            try
+            {
+                using (var context = new DB.Banking_DetailsEntities())
+                {
+                    var accountToDelete = context.Accounts.Find(fdAccountId);
+                    if (accountToDelete != null)
+                    {
+                        context.Accounts.Remove(accountToDelete);
+                        context.SaveChanges();
+                        System.Diagnostics.Debug.WriteLine($"Successfully rolled back Account entry {fdAccountId}");
+                    }
+                }
+            }
+            catch (Exception rollbackEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"Rollback failed: {rollbackEx.Message}");
+            }
         }
 
         private AccountOperationResult Error(string message)

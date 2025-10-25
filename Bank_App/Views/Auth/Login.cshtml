@@ -14,17 +14,79 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 2rem 0;
         }
         
         .login-card {
             max-width: 450px;
             width: 100%;
         }
+        
+        .register-banner {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            box-shadow: 0 4px 15px rgba(17, 153, 142, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .register-banner:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(17, 153, 142, 0.4);
+        }
+        
+        .register-banner h5 {
+            color: white;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        
+        .register-banner p {
+            color: rgba(255, 255, 255, 0.95);
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .register-features {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 1rem;
+        }
+        
+        .register-features li {
+            color: white;
+            padding: 0.25rem 0;
+            font-size: 0.9rem;
+        }
+        
+        .register-features li i {
+            color: #ffd700;
+            margin-right: 0.5rem;
+        }
+        
+        .contact-info {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .contact-info p {
+            margin-bottom: 0.5rem;
+            color: white;
+            font-size: 0.9rem;
+        }
+        
+        .contact-info p:last-child {
+            margin-bottom: 0;
+        }
     </style>
 }
 
 <div class="container login-container">
     <div class="login-card">
+        <!-- Login Card -->
         <div class="card shadow">
             <div class="card-header bg-primary text-white text-center py-4">
                 <h3 class="mb-0">
@@ -58,6 +120,45 @@
                 <small>
                     <i class="bi bi-shield-lock me-1"></i>
                     Secure Banking System © 2025
+                </small>
+            </div>
+        </div>
+
+        <!-- New Customer Registration Banner -->
+        <div class="register-banner">
+            <h5>
+                <i class="bi bi-person-plus-fill me-2"></i>New to Gen Bank?
+            </h5>
+            <p>
+                Join thousands of satisfied customers and experience modern banking with us!
+            </p>
+            
+            <ul class="register-features">
+                <li><i class="bi bi-check-circle-fill"></i> Free savings account opening</li>
+                <li><i class="bi bi-check-circle-fill"></i> Competitive interest rates on FDs</li>
+                <li><i class="bi bi-check-circle-fill"></i> Quick loan approvals</li>
+                <li><i class="bi bi-check-circle-fill"></i> 24/7 online banking access</li>
+            </ul>
+            
+            <div class="contact-info">
+                <p class="mb-2">
+                    <i class="bi bi-geo-alt-fill me-2"></i>
+                    <strong>Visit our nearest branch to register as a customer</strong>
+                </p>
+                <p class="mb-1">
+                    <i class="bi bi-telephone-fill me-2"></i>
+                    Helpline: 1800-XXX-XXXX (Toll Free)
+                </p>
+                <p class="mb-0">
+                    <i class="bi bi-envelope-fill me-2"></i>
+                    Email: support@genbank.com
+                </p>
+            </div>
+            
+            <div class="text-center mt-3">
+                <small style="color: rgba(255, 255, 255, 0.8);">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Our manager or employees will register you and provide login credentials
                 </small>
             </div>
         </div>

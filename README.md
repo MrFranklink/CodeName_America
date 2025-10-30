@@ -1,4 +1,4 @@
-# ?? Gen Bank - Banking Management System
+# :) Gen Bank - Banking Management System
 
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 [![ASP.NET MVC](https://img.shields.io/badge/ASP.NET-MVC%205-green.svg)](https://www.asp.net/mvc)
@@ -634,5 +634,5 @@ Give a ?? if this project helped you!
 
 <div align="center">
   <h3>Made with ?? by the Gen Bank Team</h3>
-  <p>© 2024 Gen Bank. All rights reserved.</p>
+  <p>Â© 2024 Gen Bank. All rights reserved.</p>
 </div>

@@ -6,7 +6,7 @@
 
 @section styles {
     <style>
-        /* Minimal custom styling - mostly Bootstrap defaults */
+        
         .page-header {
             background-color: #f8f9fa;
             padding: 2rem 0;
@@ -1080,9 +1080,7 @@
             withdraw: 'withdrawForm'
         };
 
-        // =====================================================
-        // FORM DATA PERSISTENCE FUNCTIONS (MISSING - NOW ADDED)
-        // =====================================================
+     
 
         function saveFormData(formId) {
             try {
@@ -1132,9 +1130,7 @@
             }
         }
 
-        // =====================================================
-        // DOCUMENT READY
-        // =====================================================
+        
 
         document.addEventListener('DOMContentLoaded', function() {
             // Register Customer Form
@@ -1270,9 +1266,7 @@
             setupLoanEligibilityCalculator();
         });
 
-        // =====================================================
-        // LOAN ELIGIBILITY CALCULATOR
-        // =====================================================
+        
 
         function setupLoanEligibilityCalculator() {
             const salaryInput = document.getElementById('monthlySalary');
@@ -1380,9 +1374,6 @@
             }
         }
 
-        // =====================================================
-        // SEARCH & FILTER FUNCTIONS
-        // =====================================================
 
         function filterAccountsByCustomer() {
             const customerId = document.getElementById('searchCustomerId').value.trim().toUpperCase();
@@ -1412,24 +1403,21 @@
             filterAccountsByCustomer();
         }
 
-        // =====================================================
-        // MODAL AND ALERT INITIALIZATIONS
-        // =====================================================
+     
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize tooltips
+
             var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
               return new bootstrap.Tooltip(tooltipTriggerEl);
             });
 
-            // Initialize modals
+     
             var modalTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="modal"]'));
             var modalList = modalTriggerList.map(function (modalTriggerEl) {
               return new bootstrap.Modal(modalTriggerEl);
             });
 
-            // Setup confirm dialogs for deletes
             setupConfirmDialogs();
         });
 
@@ -1444,9 +1432,6 @@
             });
         }
 
-        // =====================================================
-        // REJECT MODAL SHOW/HIDE
-        // =====================================================
 
         function showRejectModal(accountId, accountType) {
             const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
@@ -1457,9 +1442,6 @@
             modal.show();
         }
 
-        // =====================================================
-        // TRANSACTION HISTORY SEARCH
-        // =====================================================
 
         function searchTransactionHistory() {
             const accountId = document.getElementById('searchAccountId').value.trim().toUpperCase();
@@ -1482,8 +1464,6 @@
                     loadingDiv.style.display = 'none';
                     contentDiv.style.display = 'block';
 
-                    // Here you would normally fetch and display all transactions
-                    // For demo, we just show a message
                     tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Showing all transactions (demo data)</td></tr>';
                 }, 1000);
             } else {
@@ -1492,8 +1472,6 @@
                     loadingDiv.style.display = 'none';
                     contentDiv.style.display = 'block';
 
-                    // Here you would normally filter and display transactions for the given account ID
-                    // For demo, we just show a static row
                     if (accountId === 'SB00001') {
                         tableBody.innerHTML = `
                             <tr>
@@ -1516,9 +1494,7 @@
             }
         }
 
-        // =====================================================
-        // CURRENCY FORMATTER
-        // =====================================================
+        
 
         function formatCurrency(value) {
             if (isNaN(value)) return '0.00';
